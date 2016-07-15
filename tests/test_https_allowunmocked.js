@@ -4,9 +4,9 @@ var test          = require('tap').test;
 var mikealRequest = require('request');
 
 test('allowUnmock for https', function(t) {
-  var nock = require('../');
-  nock.enableNetConnect();
-  var scope = nock('https://www.google.com/', {allowUnmocked: true})
+  var nmock = require('../');
+  nmock.enableNetConnect();
+  var scope = nmock('https://www.google.com/', {allowUnmocked: true})
   .get('/pathneverhit')
   .reply(200, {foo: 'bar'});
 

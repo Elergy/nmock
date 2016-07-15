@@ -1,4 +1,4 @@
-var nock    = require('../.');
+var nmock    = require('../.');
 var request = require('request');
 var test    = require('tap').test;
 var http    = require('http');
@@ -16,7 +16,7 @@ test('query with array', function(t) {
         t.end();
     });
 
-    nock('https://array-query-string.com')
+    nmock('https://array-query-string.com')
         .get('/test')
         .query(query1)
         .reply(200, 'success');
@@ -25,7 +25,7 @@ test('query with array', function(t) {
 test('query with array which contains unencoded value ', function(t) {
     var query1 = { list: ['hello%20world', '2hello%20world', 3], a: 'b' };
 
-    nock('https://array-query-string.com')
+    nmock('https://array-query-string.com')
         .get('/test')
         .query(query1)
         .reply(200, 'success');
@@ -44,7 +44,7 @@ test('query with array which contains unencoded value ', function(t) {
 test('query with array which contains pre-encoded values ', function(t) {
     var query1 = { list: ['hello%20world', '2hello%20world']};
 
-    nock('https://array-query-string.com', { encodedQueryParams: true })
+    nmock('https://array-query-string.com', { encodedQueryParams: true })
         .get('/test')
         .query(query1)
         .reply(200, 'success');
@@ -67,7 +67,7 @@ test('query with object', function(t) {
         e: [1, 2, 3, 4]
     };
 
-    nock('https://object-query-string.com')
+    nmock('https://object-query-string.com')
         .get('/test')
         .query(query1)
         .reply(200, 'success');
@@ -90,7 +90,7 @@ test('query with object which contains unencoded value', function(t) {
         }
     };
 
-    nock('https://object-query-string.com')
+    nmock('https://object-query-string.com')
         .get('/test')
         .query(query1)
         .reply(200, 'success');
@@ -113,7 +113,7 @@ test('query with object which contains pre-encoded values', function(t) {
         }
     };
 
-    nock('https://object-query-string.com',  { encodedQueryParams: true })
+    nmock('https://object-query-string.com',  { encodedQueryParams: true })
         .get('/test')
         .query(query1)
         .reply(200, 'success');
@@ -141,7 +141,7 @@ test('query with array and regexp', function(t) {
         a: 'b'
     };
 
-    nock('https://array-query-string.com')
+    nmock('https://array-query-string.com')
         .get('/test')
         .query(expectQuery)
         .reply(200, 'success');

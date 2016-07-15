@@ -1,20 +1,20 @@
 'use strict';
 
-var nock    = require('../.')
-  , nockBack= nock.back
+var nmock    = require('../.')
+  , nmockBack= nmock.back
   , tap     = require('tap')
   , http    = require('http')
   , fs      = require('fs')
   , exists  = fs.existsSync;
 
-nock.enableNetConnect();
+nmock.enableNetConnect();
 
-var originalMode = nockBack.currentMode;
+var originalMode = nmockBack.currentMode;
 
-function testNock (t) {
+function testNMock (t) {
   var dataCalled = false;
 
-  var scope = nock('http://www.google.com')
+  var scope = nmock('http://www.google.com')
     .get('/')
     .reply(200, "Hello World!");
 
@@ -43,10 +43,10 @@ function testNock (t) {
 
 
 
-function nockBackWithFixture (t, scopesLoaded) {
+function nmockBackWithFixture (t, scopesLoaded) {
   var scopesLength = scopesLoaded ? 1 : 0;
 
-  nockBack('goodRequest.json', function (done) {
+  nmockBack('goodRequest.json', function (done) {
     t.true(this.scopes.length === scopesLength);
     http.get('http://www.google.com').end();
     this.assertScopesFinished();
@@ -55,18 +55,18 @@ function nockBackWithFixture (t, scopesLoaded) {
   });
 }
 
-function setOriginalModeOnEnd(t, nockBack) {
+function setOriginalModeOnEnd(t, nmockBack) {
   t.once('end', function() {
-    nockBack.setMode(originalMode);
+    nmockBack.setMode(originalMode);
   });
 }
 
 
 
-tap.test('nockBack throws an exception when fixtures is not set', function (t) {
+tap.test('nmockBack throws an exception when fixtures is not set', function (t) {
 
   try {
-    nockBack();
+    nmockBack();
   } catch (e) {
     t.ok(true, 'excpected exception');
     t.end();
@@ -80,43 +80,46 @@ tap.test('nockBack throws an exception when fixtures is not set', function (t) {
 
 
 
-tap.test('nockBack wild tests', function (nw) {
+tap.test('nmockBack wild tests', function (nw) {
 
   //  Manually disable net connectivity to confirm that dryrun enables it.
-  nock.disableNetConnect();
+  nmock.disableNetConnect();
 
-  nockBack.fixtures = __dirname + '/fixtures';
-  nockBack.setMode('wild');
+  nmockBack.fixtures = __dirname + '/fixtures';
+  nmockBack.setMode('wild');
 
-  nw.test('normal nocks work', function (t) {
-    testNock(t);
+  nw.test('normal nmocks work', function (t) {
+    testNMock(t);
   });
 
-  nw.test('nock back doesn\'t do anything', function (t) {
-    nockBackWithFixture(t, false);
+  nw.test('nmock back doesn\'t do anything', function (t) {
+    nmockBackWithFixture(t, false);
   });
 
-  setOriginalModeOnEnd(nw, nockBack);
+  setOriginalModeOnEnd(nw, nmockBack);
 
   nw.end();
 });
 
-tap.test('nockBack dryrun tests', function (nw) {
+tap.test('nmockBack dryrun tests', function (nw) {
 
   //  Manually disable net connectivity to confirm that dryrun enables it.
-  nock.disableNetConnect();
+  nmock.disableNetConnect();
 
-  nockBack.fixtures = __dirname + '/fixtures';
-  nockBack.setMode('dryrun');
+  nmockBack.fixtures = __dirname + '/fixtures';
+  nmockBack.setMode('dryrun');
 
-  nw.test('goes to internet even when no nockBacks are running', function(t) {
+  nw.test('goes to internet even when no nmockBacks are running', function(t) {
     var req = http.request({
         host: "www.amazon.com"
       , path: '/'
       , port: 80
       }, function(res) {
 
-        t.ok([200, 302].indexOf(res.statusCode) >= 0);
+        res.on('data', function() {
+          //node v 0.10 requires this listener
+        });
+        t.ok([200, 301, 302].indexOf(res.statusCode) >= 0);
         t.end();
 
       });
@@ -132,12 +135,12 @@ tap.test('nockBack dryrun tests', function (nw) {
     req.end();
   });
 
-  nw.test('normal nocks work', function (t) {
-    testNock(t);
+  nw.test('normal nmocks work', function (t) {
+    testNMock(t);
   });
 
   nw.test('uses recorded fixtures', function (t) {
-    nockBackWithFixture(t, true);
+    nmockBackWithFixture(t, true);
   });
 
   nw.test('goes it internet, doesn\'t recorded new fixtures', function (t) {
@@ -145,18 +148,18 @@ tap.test('nockBack dryrun tests', function (nw) {
     var dataCalled = false;
 
     var fixture = 'someDryrunFixture.json';
-    var fixtureLoc = nockBack.fixtures + '/' + fixture;
+    var fixtureLoc = nmockBack.fixtures + '/' + fixture;
 
     t.false(exists(fixtureLoc));
 
-    nockBack(fixture, function (done) {
+    nmockBack(fixture, function (done) {
       var req = http.request({
           host: "www.amazon.com"
         , path: '/'
         , port: 80
         }, function(res) {
 
-          t.ok([200, 302].indexOf(res.statusCode) >= 0);
+          t.ok([200, 301, 302].indexOf(res.statusCode) >= 0);
           res.on('end', function() {
             var doneFails = false;
 
@@ -189,27 +192,27 @@ tap.test('nockBack dryrun tests', function (nw) {
     });
   });
 
-  setOriginalModeOnEnd(nw, nockBack);
+  setOriginalModeOnEnd(nw, nmockBack);
 
   nw.end();
 });
 
-tap.test('nockBack record tests', function (nw) {
-  nockBack.setMode('record');
+tap.test('nmockBack record tests', function (nw) {
+  nmockBack.setMode('record');
 
   nw.test('it records when configured correctly', function (t) {
-    nockBack.fixtures = __dirname + '/fixtures';
+    nmockBack.fixtures = __dirname + '/fixtures';
 
     var options = {
       host: 'www.google.com', method: 'GET', path: '/', port: 80
     };
 
     var fixture = 'someFixture.json';
-    var fixtureLoc = nockBack.fixtures + '/' + fixture;
+    var fixtureLoc = nmockBack.fixtures + '/' + fixture;
 
     t.false(exists(fixtureLoc));
 
-    nockBack(fixture, function (done) {
+    nmockBack(fixture, function (done) {
       http.request(options).end();
       done();
 
@@ -222,18 +225,18 @@ tap.test('nockBack record tests', function (nw) {
   });
 
   //Adding this test because there was an issue when not calling
-  //nock.activate() after calling nock.restore()
+  //nmock.activate() after calling nmock.restore()
   nw.test('it can record twice', function (t) {
-    nockBack.fixtures = __dirname + '/fixtures';
+    nmockBack.fixtures = __dirname + '/fixtures';
 
     var options = {
       host: 'www.google.com', method: 'GET', path: '/', port: 80
     };
     var fixture = 'someFixture2.json';
-    var fixtureLoc = nockBack.fixtures + '/' + fixture;
+    var fixtureLoc = nmockBack.fixtures + '/' + fixture;
     t.false(exists(fixtureLoc));
 
-    nockBack(fixture, function (done) {
+    nmockBack(fixture, function (done) {
       http.request(options).end();
       done();
 
@@ -250,12 +253,12 @@ tap.test('nockBack record tests', function (nw) {
 
     var fixture = 'wrongUri.json';
 
-    nockBack(fixture, function (done) {
+    nmockBack(fixture, function (done) {
 
       http.get('http://www.amazon.com', function(res) {
         throw "should not request this";
       }).on('error', function(err) {
-        t.equal(err.message, 'Nock: Not allow net connect for "www.amazon.com:80/"');
+        t.equal(err.message, 'NMock: Not allow net connect for "www.amazon.com:80/"');
         done();
         t.end();
       });
@@ -267,7 +270,7 @@ tap.test('nockBack record tests', function (nw) {
 
   nw.test('it loads your recorded tests', function (t) {
 
-    nockBack('goodRequest.json', function (done) {
+    nmockBack('goodRequest.json', function (done) {
       t.true(this.scopes.length > 0);
       http.get('http://www.google.com').end();
       this.assertScopesFinished();
@@ -279,14 +282,14 @@ tap.test('nockBack record tests', function (nw) {
 
 
   nw.test('it can filter after recording', function (t) {
-    nockBack.fixtures = __dirname + '/fixtures';
+    nmockBack.fixtures = __dirname + '/fixtures';
 
     var options = {
       host: 'www.google.com', method: 'GET', path: '/', port: 80
     };
 
     var fixture = 'filteredFixture.json';
-    var fixtureLoc = nockBack.fixtures + '/' + fixture;
+    var fixtureLoc = nmockBack.fixtures + '/' + fixture;
 
     t.false(exists(fixtureLoc));
 
@@ -295,13 +298,13 @@ tap.test('nockBack record tests', function (nw) {
       return [];
     }
 
-    nockBack(fixture, {afterRecord: afterRecord}, function (done) {
+    nmockBack(fixture, {afterRecord: afterRecord}, function (done) {
       http.request(options).end();
       done();
 
       t.true(exists(fixtureLoc));
 
-      nockBack(fixture, function (done) {
+      nmockBack(fixture, function (done) {
         t.true(this.scopes.length === 0);
         done();
 
@@ -314,23 +317,23 @@ tap.test('nockBack record tests', function (nw) {
 
   nw.end();
 
-  setOriginalModeOnEnd(nw, nockBack);
+  setOriginalModeOnEnd(nw, nmockBack);
 });
 
-tap.test('nockBack lockdown tests', function (nw) {
-  nockBack.fixtures = __dirname + '/fixtures';
-  nockBack.setMode('lockdown');
+tap.test('nmockBack lockdown tests', function (nw) {
+  nmockBack.fixtures = __dirname + '/fixtures';
+  nmockBack.setMode('lockdown');
 
-  nw.test('normal nocks work', function (t) {
-    testNock(t);
+  nw.test('normal nmocks work', function (t) {
+    testNMock(t);
   });
 
 
-  nw.test('nock back loads scope', function (t) {
-    nockBackWithFixture(t, true);
+  nw.test('nmock back loads scope', function (t) {
+    nmockBackWithFixture(t, true);
   });
 
-  nw.test('no unnocked http calls work', function (t) {
+  nw.test('no unnmocked http calls work', function (t) {
     var req = http.request({
         host: "google.com"
       , path: '/'
@@ -340,7 +343,7 @@ tap.test('nockBack lockdown tests', function (nw) {
 
 
     req.on('error', function (err) {
-      t.equal(err.message.trim(), 'Nock: Not allow net connect for "google.com:80/"');
+      t.equal(err.message.trim(), 'NMock: Not allow net connect for "google.com:80/"');
       t.end();
     });
 
@@ -348,7 +351,7 @@ tap.test('nockBack lockdown tests', function (nw) {
     req.end();
   });
 
-  setOriginalModeOnEnd(nw, nockBack);
+  setOriginalModeOnEnd(nw, nmockBack);
 
   nw.end();
 });

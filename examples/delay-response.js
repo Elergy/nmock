@@ -1,9 +1,9 @@
 var http = require('http');
-var nock = require('../');
+var nmock = require('../');
 var log = require('./_log');
 var events = ['socket', 'response', 'end', 'data'];
 
-nock('http://delayconnection.com').
+nmock('http://delayconnection.com').
   get('/').
   delay(1000).
   reply(200, 'hey');

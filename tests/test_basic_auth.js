@@ -1,13 +1,13 @@
 'use strict';
 
-var nock = require('../');
+var nmock = require('../');
 var request = require('request');
 var test = require('tap').test;
 
 test('basic auth with username and password', function(t) {
   t.plan(2);
 
-  nock('http://super-secure.com')
+  nmock('http://super-secure.com')
     .get('/test')
     .basicAuth({
       user: 'foo',
@@ -45,7 +45,7 @@ test('basic auth with username and password', function(t) {
 test('basic auth with username only', function(t) {
   t.plan(2);
 
-  nock('http://super-secure.com')
+  nmock('http://super-secure.com')
     .get('/test')
     .basicAuth({
       user: 'foo'

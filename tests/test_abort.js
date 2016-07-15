@@ -1,6 +1,6 @@
 'use strict';
 
-var nock    = require('../.');
+var nmock    = require('../.');
 var http    = require('http');
 var test    = require('tap').test;
 
@@ -27,7 +27,7 @@ function assertEvents(t, cb) {
 }
 
 test('[actual] req.abort() should cause "abort" and "error" to be emitted', function (t) {
-  nock('http://localhost:16829')
+  nmock('http://localhost:16829')
     .get('/status')
     .delayConnection(500)
     .reply(204);
@@ -36,7 +36,7 @@ test('[actual] req.abort() should cause "abort" and "error" to be emitted', func
 });
 
 test("abort is emitted before delay time", function(t) {
-  nock('http://test.example.com')
+  nmock('http://test.example.com')
         .get('/status')
         .delayConnection(500)
         .reply(204);

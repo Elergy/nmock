@@ -1,13 +1,13 @@
 'use strict';
 
-var nock = require('../');
+var nmock = require('../');
 var test = require('tap').test;
 var mikealRequest = require('request');
 var assert = require('assert');
 
 test('url encoding', function (t) {
 
-  nock('http://encodingsareus.com').get('/key?a=[1]').reply(200);
+  nmock('http://encodingsareus.com').get('/key?a=[1]').reply(200);
 
   mikealRequest('http://encodingsareus.com/key?a=[1]', function(err, res) {
     if (err) throw err;
