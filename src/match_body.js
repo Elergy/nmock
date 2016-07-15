@@ -1,11 +1,10 @@
 'use strict';
 
-var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol ? "symbol" : typeof obj; };
-
 var deepEqual = require('deep-equal');
 var qs = require('querystring');
 
-module.exports = function matchBody(spec, body) {
+module.exports =
+function matchBody(spec, body) {
   if (typeof spec === 'undefined') {
     return true;
   }
@@ -15,7 +14,8 @@ module.exports = function matchBody(spec, body) {
     body = body.toString();
   }
 
-  var contentType = options.headers && (options.headers['Content-Type'] || options.headers['content-type']);
+  var contentType = options.headers && (options.headers['Content-Type'] ||
+                                        options.headers['content-type']);
 
   var isMultipart = contentType && contentType.toString().match(/multipart/);
 
@@ -35,10 +35,8 @@ module.exports = function matchBody(spec, body) {
 
   // try to transform body to json
   var json;
-  if ((typeof spec === 'undefined' ? 'undefined' : _typeof(spec)) === 'object' || typeof spec === 'function') {
-    try {
-      json = JSON.parse(body);
-    } catch (err) {}
+  if (typeof spec === 'object' || typeof spec === 'function') {
+    try { json = JSON.parse(body);} catch(err) {}
     if (json !== undefined) {
       body = json;
     } else {

@@ -1,24 +1,17 @@
 'use strict';
 
-var _ = require('lodash');
-var nmock = require('./scope');
-var recorder = require('./recorder');
+let _ = require('lodash');
+let nmock = require('./scope');
+let recorder = require('./recorder');
 
-var _require = require('util');
+let {format} = require('util');
+let path = require('path');
+let {expect} = require('chai');
+let debug = require('debug')('nmock.back');
 
-var format = _require.format;
+let _mode = null;
 
-var path = require('path');
-
-var _require2 = require('chai');
-
-var expect = _require2.expect;
-
-var debug = require('debug')('nmock.back');
-
-var _mode = null;
-
-var fs = void 0;
+let fs;
 
 try {
     fs = require('fs');
@@ -26,12 +19,12 @@ try {
     // do nothing, probably in browser
 }
 
-var mkdirp = void 0;
+let mkdirp;
 try {
     mkdirp = require('mkdirp');
-} catch (err) {}
-// do nothing, probably in browser
-
+} catch (err) {
+    // do nothing, probably in browser
+}
 
 // /**
 //  * NMock the current function with the fixture given
@@ -69,7 +62,9 @@ try {
  */
 function Back(fixtureName, options, mockedFn) {
     if (!Back.fixtures) {
-        throw new Error('Back requires nmock.back.fixtures to be set\n' + 'Ex:\n' + '\trequire(nmock).back.fixtures = \'/path/to/fixures/\'');
+        throw new Error('Back requires nmock.back.fixtures to be set\n' +
+            'Ex:\n' +
+            '\trequire(nmock).back.fixtures = \'/path/to/fixures/\'');
     }
 
     if (arguments.length === 2) {
@@ -79,10 +74,11 @@ function Back(fixtureName, options, mockedFn) {
 
     _mode.setup();
 
-    var fixture = path.join(Back.fixtures, fixtureName),
-        context = _mode.start(fixture, options);
+    var fixture = path.join(Back.fixtures, fixtureName)
+        , context = _mode.start(fixture, options);
 
-    var nmockDone = function nmockDone() {
+
+    var nmockDone = function() {
         _mode.finish(fixture, options, context);
     };
 
@@ -91,32 +87,40 @@ function Back(fixtureName, options, mockedFn) {
     mockedFn.call(context, nmockDone);
 }
 
+
 /*******************************************************************************
  *                                    Modes                                     *
  *******************************************************************************/
 
+
 var wild = {
 
-    setup: function setup() {
+
+    setup: function() {
         nmock.cleanAll();
         recorder.restore();
         nmock.activate();
         nmock.enableNetConnect();
     },
 
-    start: function start() {
+
+    start: function() {
         return load(); //don't load anything but get correct context
     },
 
-    finish: function finish() {
+
+    finish: function() {
         //nothing to do
     }
 
+
 };
+
 
 var dryrun = {
 
-    setup: function setup() {
+
+    setup: function() {
         recorder.restore();
         nmock.cleanAll();
         nmock.activate();
@@ -124,22 +128,27 @@ var dryrun = {
         nmock.enableNetConnect();
     },
 
-    start: function start(fixture, options) {
+
+    start: function(fixture, options) {
         var contexts = load(fixture, options);
 
         nmock.enableNetConnect();
         return contexts;
     },
 
-    finish: function finish() {
+
+    finish: function() {
         //nothing to do
     }
 
+
 };
+
 
 var record = {
 
-    setup: function setup() {
+
+    setup: function() {
         recorder.restore();
         recorder.clear();
         nmock.cleanAll();
@@ -147,7 +156,8 @@ var record = {
         nmock.disableNetConnect();
     },
 
-    start: function start(fixture, options) {
+
+    start: function(fixture, options) {
         if (!fs) {
             throw new Error('no fs');
         }
@@ -165,7 +175,8 @@ var record = {
         return context;
     },
 
-    finish: function finish(fixture, options, context) {
+
+    finish: function(fixture, options, context) {
         if (context.isRecording) {
             var outputs = recorder.outputs();
 
@@ -181,11 +192,14 @@ var record = {
         }
     }
 
+
 };
+
 
 var lockdown = {
 
-    setup: function setup() {
+
+    setup: function() {
         recorder.restore();
         recorder.clear();
         nmock.cleanAll();
@@ -193,20 +207,24 @@ var lockdown = {
         nmock.disableNetConnect();
     },
 
-    start: function start(fixture, options) {
+
+    start: function(fixture, options) {
         return load(fixture, options);
     },
 
-    finish: function finish() {
+
+    finish: function() {
         //nothing to do
     }
 
+
 };
+
 
 function load(fixture, options) {
     var context = {
         scopes: [],
-        assertScopesFinished: function assertScopesFinished() {
+        assertScopesFinished: function() {
             assertScopes(this.scopes, fixture);
         }
     };
@@ -222,8 +240,10 @@ function load(fixture, options) {
         context.isLoaded = true;
     }
 
+
     return context;
 }
+
 
 function applyHook(scopes, fn) {
     if (!fn) {
@@ -237,6 +257,7 @@ function applyHook(scopes, fn) {
     scopes.forEach(fn);
 }
 
+
 function fixtureExists(fixture) {
     if (!fs) {
         throw new Error('no fs');
@@ -245,17 +266,25 @@ function fixtureExists(fixture) {
     return fs.existsSync(fixture);
 }
 
+
 function assertScopes(scopes, fixture) {
-    scopes.forEach(function (scope) {
-        expect(scope.isDone()).to.be.equal(true, format('%j was not used, consider removing %s to rerecord fixture', scope.pendingMocks(), fixture));
+    scopes.forEach(function(scope) {
+        expect(scope.isDone())
+            .to.be.equal(
+            true,
+            format('%j was not used, consider removing %s to rerecord fixture', scope.pendingMocks(), fixture)
+        );
     });
 }
 
+
 var Modes = {
 
-    wild: wild, //all requests go out to the internet, dont replay anything, doesnt record anything
+    //all requests go out to the internet, dont replay anything, doesnt record anything
+    wild: wild,
 
-    dryrun: dryrun, //use recorded mocks, allow http calls, doesnt record anything, useful for writing new tests (default)
+    //use recorded mocks, allow http calls, doesnt record anything, useful for writing new tests (default)
+    dryrun: dryrun,
 
     record: record, //use recorded mocks, record new mocks
 
@@ -263,7 +292,8 @@ var Modes = {
 
 };
 
-Back.setMode = function (mode) {
+
+Back.setMode = function(mode) {
     if (!Modes.hasOwnProperty(mode)) {
         throw new Error('some usage error');
     }
@@ -274,6 +304,7 @@ Back.setMode = function (mode) {
     _mode = Modes[mode];
     _mode.setup();
 };
+
 
 Back.fixtures = null;
 Back.currentMode = null;

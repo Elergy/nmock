@@ -1,7 +1,5 @@
 'use strict';
 
-var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol ? "symbol" : typeof obj; };
-
 var inspect = require('util').inspect;
 var parse = require('url').parse;
 var common = require('./common');
@@ -29,27 +27,32 @@ function getScope(options) {
   scope.push(options.host);
 
   //  If a non-standard port wasn't specified in options.host, include it from options.port.
-  if (options.host.indexOf(':') === -1 && options.port && (options._https_ && options.port.toString() !== '443' || !options._https_ && options.port.toString() !== '80')) {
+  if(options.host.indexOf(':') === -1 &&
+     options.port &&
+     ((options._https_ && options.port.toString() !== '443') ||
+       (!options._https_ && options.port.toString() !== '80'))) {
     scope.push(':');
     scope.push(options.port);
   }
 
   return scope.join('');
+
 }
 
 function getMethod(options) {
 
-  return options.method || 'GET';
+  return (options.method || 'GET');
+
 }
 
-var getBodyFromChunks = function getBodyFromChunks(chunks, headers) {
+var getBodyFromChunks = function(chunks, headers) {
 
   //  If we have headers and there is content-encoding it means that
   //  the body shouldn't be merged but instead persisted as an array
   //  of hex strings so that the responses can be mocked one by one.
-  if (common.isContentEncoded(headers)) {
-    return _.map(chunks, function (chunk) {
-      if (!Buffer.isBuffer(chunk)) {
+  if(common.isContentEncoded(headers)) {
+    return _.map(chunks, function(chunk) {
+      if(!Buffer.isBuffer(chunk)) {
         if (typeof chunk === 'string') {
           chunk = new Buffer(chunk);
         } else {
@@ -68,31 +71,33 @@ var getBodyFromChunks = function getBodyFromChunks(chunks, headers) {
   //    2.  A string buffer which represents a JSON object.
   //    3.  A string buffer which doesn't represent a JSON object.
 
-  if (common.isBinaryBuffer(mergedBuffer)) {
+  if(common.isBinaryBuffer(mergedBuffer)) {
     return mergedBuffer.toString('hex');
   } else {
     var maybeStringifiedJson = mergedBuffer.toString('utf8');
     try {
       return JSON.parse(maybeStringifiedJson);
-    } catch (err) {
+    } catch(err) {
       return maybeStringifiedJson;
     }
   }
+
 };
 
 function generateRequestAndResponseObject(req, bodyChunks, options, res, dataChunks) {
 
   options.path = req.path;
   return {
-    scope: getScope(options),
-    method: getMethod(options),
-    path: options.path,
-    body: getBodyFromChunks(bodyChunks),
-    status: res.statusCode,
+    scope:    getScope(options),
+    method:   getMethod(options),
+    path:     options.path,
+    body:     getBodyFromChunks(bodyChunks),
+    status:   res.statusCode,
     response: getBodyFromChunks(dataChunks, res.headers),
-    headers: res.headers,
-    reqheaders: req._headers
+    headers:  res.headers,
+    reqheaders:   req._headers
   };
+
 }
 
 function generateRequestAndResponse(req, bodyChunks, options, res, dataChunks) {
@@ -175,7 +180,7 @@ function record(rec_options) {
   //  Trying to start recording with recording already in progress implies an error
   //  in the recording configuration (double recording makes no sense and used to lead
   //  to duplicates in output)
-  if (recordingInProgress) {
+  if(recordingInProgress) {
     throw new Error('NMock recording already in progress');
   }
 
@@ -183,11 +188,12 @@ function record(rec_options) {
 
   //  Originaly the parameters was a dont_print boolean flag.
   //  To keep the existing code compatible we take that case into account.
-  var optionsIsObject = (typeof rec_options === 'undefined' ? 'undefined' : _typeof(rec_options)) === 'object';
-  var dont_print = typeof rec_options === 'boolean' && rec_options || optionsIsObject && rec_options.dont_print;
+  var optionsIsObject = typeof rec_options === 'object';
+  var dont_print = (typeof rec_options === 'boolean' && rec_options) ||
+      (optionsIsObject && rec_options.dont_print);
   var output_objects = optionsIsObject && rec_options.output_objects;
   var enable_reqheaders_recording = optionsIsObject && rec_options.enable_reqheaders_recording;
-  var logging = optionsIsObject && rec_options.logging || console.log;
+  var logging = (optionsIsObject && rec_options.logging) || console.log;
   var use_separator = true;
   if (optionsIsObject && _.has(rec_options, 'use_separator')) {
     use_separator = rec_options.use_separator;
@@ -203,7 +209,7 @@ function record(rec_options) {
   intercept.restoreOverriddenClientRequest();
 
   //  We override the requests so that we can save information on them before executing.
-  common.overrideRequests(function (proto, overriddenRequest, options, callback) {
+  common.overrideRequests(function(proto, overriddenRequest, options, callback) {
 
     var bodyChunks = [];
 
@@ -224,7 +230,7 @@ function record(rec_options) {
     }
     options._recording = true;
 
-    var req = overriddenRequest(options, function (res) {
+    var req = overriddenRequest(options, function(res) {
 
       debug(thisRecordingId, 'intercepting', proto, 'request to record');
 
@@ -233,19 +239,19 @@ function record(rec_options) {
       }
 
       //  We put our 'end' listener to the front of the listener array.
-      res.once('end', function () {
+      res.once('end', function() {
         debug(thisRecordingId, proto, 'intercepted request ended');
 
         var out;
-        if (output_objects) {
+        if(output_objects) {
           out = generateRequestAndResponseObject(req, bodyChunks, options, res, dataChunks);
-          if (out.reqheaders) {
+          if(out.reqheaders) {
             //  We never record user-agent headers as they are worse than useless -
             //  they actually make testing more difficult without providing any benefit (see README)
             common.deleteHeadersField(out.reqheaders, 'user-agent');
 
             //  Remove request headers completely unless it was explicitly enabled by the user (see README)
-            if (!enable_reqheaders_recording) {
+            if(!enable_reqheaders_recording) {
               delete out.reqheaders;
             }
           }
@@ -263,7 +269,7 @@ function record(rec_options) {
         //  If you are seeing this error then you need to make sure that all
         //  the requests made during a single recording session finish before
         //  ending the same recording session.
-        if (thisRecordingId !== currentRecordingId) {
+        if(thisRecordingId !== currentRecordingId) {
           debug('skipping recording of an out-of-order request', out);
           return;
         }
@@ -292,7 +298,7 @@ function record(rec_options) {
 
       // Replace res.push with our own implementation that stores chunks
       var origResPush = res.push;
-      res.push = function (data) {
+      res.push = function(data) {
         if (data) {
           if (encoding) {
             data = new Buffer(data, encoding);
@@ -301,7 +307,7 @@ function record(rec_options) {
         }
 
         return origResPush.call(res, data);
-      };
+      }
 
       if (callback) {
         callback(res, options, callback);
@@ -314,14 +320,15 @@ function record(rec_options) {
       if (proto === 'https') {
         options._https_ = true;
       }
+
     });
 
     var oldWrite = req.write;
-    req.write = function (data, encoding) {
-      if ('undefined' !== typeof data) {
+    req.write = function(data, encoding) {
+      if ('undefined' !== typeof(data)) {
         if (data) {
           debug(thisRecordingId, 'new', proto, 'body chunk');
-          if (!Buffer.isBuffer(data)) {
+          if (! Buffer.isBuffer(data)) {
             data = new Buffer(data, encoding);
           }
           bodyChunks.push(data);
@@ -348,7 +355,7 @@ function clear() {
 }
 
 exports.record = record;
-exports.outputs = function () {
+exports.outputs = function() {
   return outputs;
 };
 exports.restore = restore;

@@ -1,27 +1,25 @@
-'use strict';
-
 /* jshint strict:false */
 /**
  * @module nmock/scope
  */
-var globalIntercept = require('./intercept'),
-    common = require('./common'),
-    assert = require('assert'),
-    url = require('url'),
-    _ = require('lodash'),
-    debug = require('debug')('nmock.scope'),
-    stringify = require('json-stringify-safe'),
-    EventEmitter = require('events').EventEmitter,
-    extend = require('util')._extend,
-    globalEmitter = require('./global_emitter'),
-    util = require('util'),
-    Interceptor = require('./interceptor');
+var globalIntercept = require('./intercept')
+  , common          = require('./common')
+  , assert          = require('assert')
+  , url             = require('url')
+  , _               = require('lodash')
+  , debug           = require('debug')('nmock.scope')
+  , stringify       = require('json-stringify-safe')
+  , EventEmitter    = require('events').EventEmitter
+  , extend          = require('util')._extend
+  , globalEmitter   = require('./global_emitter')
+  , util            = require('util')
+  , Interceptor     = require('./interceptor') ;
 
 var fs;
 
 try {
   fs = require('fs');
-} catch (err) {
+} catch(err) {
   // do nothing, we're in the browser
 }
 
@@ -52,7 +50,7 @@ function Scope(basePath, options) {
 
   if (!(basePath instanceof RegExp)) {
     this.urlParts = url.parse(basePath);
-    this.port = this.urlParts.port || (this.urlParts.protocol === 'http:' ? 80 : 443);
+    this.port = this.urlParts.port || ((this.urlParts.protocol === 'http:') ? 80 : 443);
     this.basePathname = this.urlParts.pathname.replace(/\/$/, '');
     this.basePath = this.urlParts.protocol + '//' + this.urlParts.hostname + ':' + this.port;
   }
@@ -61,11 +59,15 @@ function Scope(basePath, options) {
 util.inherits(Scope, EventEmitter);
 
 Scope.prototype.add = function add(key, interceptor, scope) {
-  if (!this.keyedInterceptors.hasOwnProperty(key)) {
+  if (! this.keyedInterceptors.hasOwnProperty(key)) {
     this.keyedInterceptors[key] = [];
   }
   this.keyedInterceptors[key].push(interceptor);
-  globalIntercept(this.basePath, interceptor, this, this.scopeOptions, this.urlParts.hostname);
+  globalIntercept(this.basePath,
+      interceptor,
+      this,
+      this.scopeOptions,
+      this.urlParts.hostname);
 };
 
 Scope.prototype.remove = function remove(key, interceptor) {
@@ -123,9 +125,7 @@ Scope.prototype.pendingMocks = function pendingMocks() {
 Scope.prototype.isDone = function isDone() {
   var self = this;
   // if NMock is turned off, it always says it's done
-  if (!globalIntercept.isOn()) {
-    return true;
-  }
+  if (! globalIntercept.isOn()) { return true; }
 
   var keys = Object.keys(this.keyedInterceptors);
   if (keys.length === 0) {
@@ -133,10 +133,10 @@ Scope.prototype.isDone = function isDone() {
   } else {
     var doneHostCount = 0;
 
-    keys.forEach(function (key) {
+    keys.forEach(function(key) {
       var doneInterceptorCount = 0;
 
-      self.keyedInterceptors[key].forEach(function (interceptor) {
+      self.keyedInterceptors[key].forEach(function(interceptor) {
         var isRequireDoneDefined = !_.isUndefined(interceptor.options.requireDone);
         if (isRequireDoneDefined && interceptor.options.requireDone === false) {
           doneInterceptorCount += 1;
@@ -145,11 +145,11 @@ Scope.prototype.isDone = function isDone() {
         }
       });
 
-      if (doneInterceptorCount === self.keyedInterceptors[key].length) {
+      if (doneInterceptorCount === self.keyedInterceptors[key].length ) {
         doneHostCount += 1;
       }
     });
-    return doneHostCount === keys.length;
+    return (doneHostCount === keys.length);
   }
 };
 
@@ -161,7 +161,7 @@ Scope.prototype.buildFilter = function buildFilter() {
   var filteringArguments = arguments;
 
   if (arguments[0] instanceof RegExp) {
-    return function (candidate) {
+    return function(candidate) {
       if (candidate) {
         candidate = candidate.replace(filteringArguments[0], filteringArguments[1]);
       }
@@ -223,13 +223,16 @@ Scope.prototype.replyDate = function replyDate(d) {
   return this;
 };
 
+
+
+
 function cleanAll() {
   globalIntercept.removeAll();
   return module.exports;
 }
 
 function loadDefs(path) {
-  if (!fs) {
+  if (! fs) {
     throw new Error('No fs');
   }
 
@@ -276,25 +279,25 @@ function getScopeFromDefinition(nmockDef) {
 function tryJsonParse(string) {
   try {
     return JSON.parse(string);
-  } catch (err) {
+  } catch(err) {
     return string;
   }
 }
 
 function define(nmockDefs) {
 
-  var nmocks = [];
+  var nmocks     = [];
 
-  nmockDefs.forEach(function (nmockDef) {
+  nmockDefs.forEach(function(nmockDef) {
 
-    var nscope = getScopeFromDefinition(nmockDef),
-        npath = nmockDef.path,
-        method = nmockDef.method.toLowerCase() || "get",
-        status = getStatusFromDefinition(nmockDef),
-        headers = nmockDef.headers || {},
-        reqheaders = nmockDef.reqheaders || {},
-        body = nmockDef.body || '',
-        options = nmockDef.options || {};
+    var nscope     = getScopeFromDefinition(nmockDef)
+      , npath      = nmockDef.path
+      , method     = nmockDef.method.toLowerCase() || "get"
+      , status     = getStatusFromDefinition(nmockDef)
+      , headers    = nmockDef.headers    || {}
+      , reqheaders = nmockDef.reqheaders || {}
+      , body       = nmockDef.body       || ''
+      , options    = nmockDef.options    || {};
 
     //  We use request headers for both filtering (see below) and mocking.
     //  Here we are setting up mocked request headers but we don't want to
@@ -312,8 +315,8 @@ function define(nmockDefs) {
     }
 
     var nmock;
-    if (body === "*") {
-      nmock = startScope(nscope, options).filteringRequestBody(function () {
+    if (body==="*") {
+      nmock = startScope(nscope, options).filteringRequestBody(function() {
         return "*";
       })[method](npath, "*").reply(status, response, headers);
     } else {
@@ -331,6 +334,7 @@ function define(nmockDefs) {
     }
 
     nmocks.push(nmock);
+
   });
 
   return nmocks;
@@ -348,5 +352,5 @@ module.exports = extend(startScope, {
   load: load,
   loadDefs: loadDefs,
   define: define,
-  emitter: globalEmitter
+  emitter: globalEmitter,
 });

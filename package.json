@@ -175,6 +175,9 @@
   "devDependencies": {
     "async": "^2.0.0",
     "aws-sdk": "^2.0.15",
+    "babel-cli": "^6.10.1",
+    "babel-core": "^6.10.4",
+    "babel-preset-es2015": "^6.9.0",
     "browserify": "^13.0.0",
     "coveralls": "^2.11.2",
     "hyperquest": "^2.0.0",
@@ -194,11 +197,14 @@
     "zombie": "^4.2.1"
   },
   "scripts": {
+    "build": "babel src -d lib",
     "test": "node --harmony tests/test.js",
     "coverage": "node --harmony node_modules/istanbul/lib/cli.js cover tests/test.js && istanbul check-coverage",
     "coveralls": "cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
-    "jshint": "jshint lib/*.js",
-    "changelog": "changelog nmock all -m > CHANGELOG.md"
+    "jshint": "jshint src/*.js",
+    "changelog": "changelog nmock all -m > CHANGELOG.md",
+    "pretest": "npm run build",
+    "precoverage": "npm run build"
   },
   "pre-commit": [
     "jshint",

@@ -1,2 +1,13 @@
 node_modules
 .gitignore
+assets
+coverage
+examples
+src
+tests
+.babelrc
+.coveralls.yml
+.istanbul.yml
+.jscs.json
+.jshintrc
+.travis.yml

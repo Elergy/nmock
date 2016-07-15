@@ -19,31 +19,53 @@ var _ = require('lodash');
 var nmock = require('./scope');
 var recorder = require('./recorder');
 
-var format = require('util').format;
+var _require = require('util');
+
+var format = _require.format;
+
 var path = require('path');
-var expect = require('chai').expect;
+
+var _require2 = require('chai');
+
+var expect = _require2.expect;
+
 var debug = require('debug')('nmock.back');
 
 var _mode = null;
 
-var fs;
+var fs = void 0;
 
 try {
-  fs = require('fs');
-} catch(err) {
-  // do nothing, probably in browser
+    fs = require('fs');
+} catch (err) {
+    // do nothing, probably in browser
 }
 
-var mkdirp;
+var mkdirp = void 0;
 try {
-  mkdirp = require('mkdirp');
-} catch(err) {
-  // do nothing, probably in browser
-}
+    mkdirp = require('mkdirp');
+} catch (err) {}
+// do nothing, probably in browser
 
+
+// /**
+//  * NMock the current function with the fixture given
+//  */
+// class Back {
+//     /**
+//      *
+//      * @param {string} fixtureName the name of the fixture, e.x. 'foo.json'
+//      * @param {object} [options] extra options for NMock with, e.g. { assert: true }
+//      * @param {function} mockedFn the callback function to be executed with the given fixture being loaded,
+//      * the function will be called with { scopes: loaded_nmocks || [] } set as this
+//      */
+//     constructor(fixtureName, options, mockedFn) {
+//
+//     }
+// }
 
 /**
- * NMock the current function with the fixture given
+ *
  *
  * @param {string}   fixtureName  - the name of the fixture, e.x. 'foo.json'
  * @param {object}   options      - [optional], extra options for NMock with, e.x. { assert: true }
@@ -60,279 +82,219 @@ try {
  * @param {function} recorder     - custom options to pass to the recorder
  *
  */
-function Back (fixtureName, options, mockedFn) {
-  if(!Back.fixtures) {
-    throw new Error(  'Back requires nmock.back.fixtures to be set\n' +
-                      'Ex:\n' +
-                      '\trequire(nmock).back.fixtures = \'/path/to/fixures/\'');
-  }
+function Back(fixtureName, options, mockedFn) {
+    if (!Back.fixtures) {
+        throw new Error('Back requires nmock.back.fixtures to be set\n' + 'Ex:\n' + '\trequire(nmock).back.fixtures = \'/path/to/fixures/\'');
+    }
 
-  if( arguments.length === 2 ) {
-    mockedFn = options;
-    options = {};
-  }
+    if (arguments.length === 2) {
+        mockedFn = options;
+        options = {};
+    }
 
-  _mode.setup();
+    _mode.setup();
 
-  var fixture = path.join(Back.fixtures, fixtureName)
-    , context = _mode.start(fixture, options);
+    var fixture = path.join(Back.fixtures, fixtureName),
+        context = _mode.start(fixture, options);
 
+    var nmockDone = function nmockDone() {
+        _mode.finish(fixture, options, context);
+    };
 
-  var nmockDone = function () {
-    _mode.finish(fixture, options, context);
-  };
+    debug('context:', context);
 
-  debug('context:', context);
-
-  mockedFn.call(context, nmockDone);
+    mockedFn.call(context, nmockDone);
 }
 
-
-
-
 /*******************************************************************************
-*                                    Modes                                     *
-*******************************************************************************/
-
+ *                                    Modes                                     *
+ *******************************************************************************/
 
 var wild = {
 
+    setup: function setup() {
+        nmock.cleanAll();
+        recorder.restore();
+        nmock.activate();
+        nmock.enableNetConnect();
+    },
 
-  setup: function () {
-    nmock.cleanAll();
-    recorder.restore();
-    nmock.activate();
-    nmock.enableNetConnect();
-  },
+    start: function start() {
+        return load(); //don't load anything but get correct context
+    },
 
-
-  start: function () {
-    return load(); //don't load anything but get correct context
-  },
-
-
-  finish: function () {
-    //nothing to do
-  }
-
+    finish: function finish() {
+        //nothing to do
+    }
 
 };
-
-
-
 
 var dryrun = {
 
+    setup: function setup() {
+        recorder.restore();
+        nmock.cleanAll();
+        nmock.activate();
+        //  We have to explicitly enable net connectivity as by default it's off.
+        nmock.enableNetConnect();
+    },
 
-  setup: function () {
-    recorder.restore();
-    nmock.cleanAll();
-    nmock.activate();
-    //  We have to explicitly enable net connectivity as by default it's off.
-    nmock.enableNetConnect();
-  },
+    start: function start(fixture, options) {
+        var contexts = load(fixture, options);
 
+        nmock.enableNetConnect();
+        return contexts;
+    },
 
-  start: function (fixture, options) {
-    var contexts = load(fixture, options);
-
-    nmock.enableNetConnect();
-    return contexts;
-  },
-
-
-  finish: function () {
-    //nothing to do
-  }
-
+    finish: function finish() {
+        //nothing to do
+    }
 
 };
-
-
-
 
 var record = {
 
+    setup: function setup() {
+        recorder.restore();
+        recorder.clear();
+        nmock.cleanAll();
+        nmock.activate();
+        nmock.disableNetConnect();
+    },
 
-  setup: function () {
-    recorder.restore();
-    recorder.clear();
-    nmock.cleanAll();
-    nmock.activate();
-    nmock.disableNetConnect();
-  },
+    start: function start(fixture, options) {
+        if (!fs) {
+            throw new Error('no fs');
+        }
+        var context = load(fixture, options);
 
+        if (!context.isLoaded) {
+            recorder.record(_.assign({
+                dont_print: true,
+                output_objects: true
+            }, options && options.recorder));
 
-  start: function (fixture, options) {
-    if (! fs) {
-      throw new Error('no fs');
+            context.isRecording = true;
+        }
+
+        return context;
+    },
+
+    finish: function finish(fixture, options, context) {
+        if (context.isRecording) {
+            var outputs = recorder.outputs();
+
+            if (typeof options.afterRecord === 'function') {
+                outputs = options.afterRecord(outputs);
+            }
+
+            outputs = JSON.stringify(outputs, null, 4);
+            debug('recorder outputs:', outputs);
+
+            mkdirp.sync(path.dirname(fixture));
+            fs.writeFileSync(fixture, outputs);
+        }
     }
-    var context = load(fixture, options);
-
-    if( !context.isLoaded ) {
-      recorder.record(_.assign({
-        dont_print: true,
-        output_objects: true
-      }, options && options.recorder));
-
-      context.isRecording = true;
-    }
-
-    return context;
-  },
-
-
-  finish: function (fixture, options, context) {
-    if( context.isRecording ) {
-      var outputs = recorder.outputs();
-
-      if( typeof options.afterRecord === 'function' ) {
-        outputs = options.afterRecord(outputs);
-      }
-
-      outputs = JSON.stringify(outputs, null, 4);
-      debug('recorder outputs:', outputs);
-
-      mkdirp.sync(path.dirname(fixture));
-      fs.writeFileSync(fixture, outputs);
-    }
-  }
-
 
 };
-
-
-
 
 var lockdown = {
 
+    setup: function setup() {
+        recorder.restore();
+        recorder.clear();
+        nmock.cleanAll();
+        nmock.activate();
+        nmock.disableNetConnect();
+    },
 
-  setup: function () {
-    recorder.restore();
-    recorder.clear();
-    nmock.cleanAll();
-    nmock.activate();
-    nmock.disableNetConnect();
-  },
+    start: function start(fixture, options) {
+        return load(fixture, options);
+    },
 
-
-  start: function (fixture, options) {
-    return load(fixture, options);
-  },
-
-
-  finish: function () {
-    //nothing to do
-  }
-
+    finish: function finish() {
+        //nothing to do
+    }
 
 };
 
+function load(fixture, options) {
+    var context = {
+        scopes: [],
+        assertScopesFinished: function assertScopesFinished() {
+            assertScopes(this.scopes, fixture);
+        }
+    };
 
+    if (fixture && fixtureExists(fixture)) {
+        var scopes = nmock.loadDefs(fixture);
+        applyHook(scopes, options.before);
 
+        scopes = nmock.define(scopes);
+        applyHook(scopes, options.after);
 
-function load (fixture, options) {
-  var context = {
-    scopes : [],
-    assertScopesFinished: function () {
-      assertScopes(this.scopes, fixture);
+        context.scopes = scopes;
+        context.isLoaded = true;
     }
-  };
 
-  if( fixture && fixtureExists(fixture) ) {
-    var scopes = nmock.loadDefs(fixture);
-    applyHook(scopes, options.before);
-
-    scopes = nmock.define(scopes);
-    applyHook(scopes, options.after);
-
-    context.scopes = scopes;
-    context.isLoaded = true;
-  }
-
-
-  return context;
+    return context;
 }
-
-
-
 
 function applyHook(scopes, fn) {
-  if( !fn ) {
-    return;
-  }
+    if (!fn) {
+        return;
+    }
 
-  if( typeof fn !== 'function' ) {
-    throw new Error ('processing hooks must be a function');
-  }
+    if (typeof fn !== 'function') {
+        throw new Error('processing hooks must be a function');
+    }
 
-  scopes.forEach(fn);
+    scopes.forEach(fn);
 }
-
-
-
 
 function fixtureExists(fixture) {
-  if (! fs) {
-    throw new Error('no fs');
-  }
+    if (!fs) {
+        throw new Error('no fs');
+    }
 
-  return fs.existsSync(fixture);
+    return fs.existsSync(fixture);
 }
 
-
-
-
-function assertScopes (scopes, fixture) {
-  scopes.forEach(function (scope) {
-    expect( scope.isDone() )
-    .to.be.equal(
-      true,
-      format('%j was not used, consider removing %s to rerecord fixture', scope.pendingMocks(), fixture)
-    );
-  });
+function assertScopes(scopes, fixture) {
+    scopes.forEach(function (scope) {
+        expect(scope.isDone()).to.be.equal(true, format('%j was not used, consider removing %s to rerecord fixture', scope.pendingMocks(), fixture));
+    });
 }
-
-
-
 
 var Modes = {
 
-  wild: wild, //all requests go out to the internet, dont replay anything, doesnt record anything
+    wild: wild, //all requests go out to the internet, dont replay anything, doesnt record anything
 
-  dryrun: dryrun, //use recorded mocks, allow http calls, doesnt record anything, useful for writing new tests (default)
+    dryrun: dryrun, //use recorded mocks, allow http calls, doesnt record anything, useful for writing new tests (default)
 
-  record: record, //use recorded mocks, record new mocks
+    record: record, //use recorded mocks, record new mocks
 
-  lockdown: lockdown //use recorded mocks, disables all http calls even when not mocked, doesnt record
+    lockdown: lockdown //use recorded mocks, disables all http calls even when not mocked, doesnt record
 
 };
 
+Back.setMode = function (mode) {
+    if (!Modes.hasOwnProperty(mode)) {
+        throw new Error('some usage error');
+    }
 
+    Back.currentMode = mode;
+    debug('New NMock back mode:', Back.currentMode);
 
-
-
-Back.setMode = function(mode) {
-  if( !Modes.hasOwnProperty(mode) ) {
-    throw new Error ('some usage error');
-  }
-
-  Back.currentMode = mode;
-  debug('New NMock back mode:', Back.currentMode);
-
-  _mode = Modes[mode];
-  _mode.setup();
+    _mode = Modes[mode];
+    _mode.setup();
 };
-
-
-
 
 Back.fixtures = null;
 Back.currentMode = null;
 Back.setMode(process.env.NMOCK_BACK_MODE || 'dryrun');
 
 module.exports = Back;
-
 }).call(this,require('_process'))
 },{"./recorder":10,"./scope":12,"_process":26,"chai":60,"debug":96,"fs":14,"lodash":103,"mkdirp":104,"path":25,"util":58}],3:[function(require,module,exports){
 (function (Buffer){
@@ -346,12 +308,12 @@ var debug = require('debug')('nmock.common');
  *
  * @param  {Object} options - a parsed options object of the request
  */
-var normalizeRequestOptions = function(options) {
-  options.proto = options.proto || (options._https_ ? 'https': 'http');
-  options.port = options.port || ((options.proto === 'http') ? 80 : 443);
+var normalizeRequestOptions = function normalizeRequestOptions(options) {
+  options.proto = options.proto || (options._https_ ? 'https' : 'http');
+  options.port = options.port || (options.proto === 'http' ? 80 : 443);
   if (options.host) {
     debug('options.host:', options.host);
-    if (! options.hostname) {
+    if (!options.hostname) {
       if (options.host.split(':').length == 2) {
         options.hostname = options.host.split(':')[0];
       } else {
@@ -364,7 +326,7 @@ var normalizeRequestOptions = function(options) {
   debug('options.host in the end: %j', options.host);
 
   /// lowercase host names
-  ['hostname', 'host'].forEach(function(attr) {
+  ['hostname', 'host'].forEach(function (attr) {
     if (options[attr]) {
       options[attr] = options[attr].toLowerCase();
     }
@@ -379,22 +341,22 @@ var normalizeRequestOptions = function(options) {
  *
  * @param  {Object} buffer - a Buffer object
  */
-var isBinaryBuffer = function(buffer) {
+var isBinaryBuffer = function isBinaryBuffer(buffer) {
 
-  if(!Buffer.isBuffer(buffer)) {
+  if (!Buffer.isBuffer(buffer)) {
     return false;
   }
 
   //  Test if the buffer can be reconstructed verbatim from its utf8 encoding.
   var utfEncodedBuffer = buffer.toString('utf8');
   var reconstructedBuffer = new Buffer(utfEncodedBuffer, 'utf8');
-  var compareBuffers = function(lhs, rhs) {
-    if(lhs.length !== rhs.length) {
+  var compareBuffers = function compareBuffers(lhs, rhs) {
+    if (lhs.length !== rhs.length) {
       return false;
     }
 
-    for(var i = 0; i < lhs.length; ++i) {
-      if(lhs[i] !== rhs[i]) {
+    for (var i = 0; i < lhs.length; ++i) {
+      if (lhs[i] !== rhs[i]) {
         return false;
       }
     }
@@ -405,7 +367,6 @@ var isBinaryBuffer = function(buffer) {
   //  If the buffers are *not* equal then this is a "binary buffer"
   //  meaning that it cannot be faitfully represented in utf8.
   return !compareBuffers(buffer, reconstructedBuffer);
-
 };
 
 /**
@@ -414,23 +375,22 @@ var isBinaryBuffer = function(buffer) {
  *
  * @param  {Array} chunks - an array of Buffer objects or strings
  */
-var mergeChunks = function(chunks) {
+var mergeChunks = function mergeChunks(chunks) {
 
-  if(_.isEmpty(chunks)) {
+  if (_.isEmpty(chunks)) {
     return new Buffer(0);
   }
 
   //  We assume that all chunks are Buffer objects if the first is buffer object.
   var areBuffers = Buffer.isBuffer(_.first(chunks));
 
-  if(!areBuffers) {
+  if (!areBuffers) {
     //  When the chunks are not buffers we assume that they are strings.
     return chunks.join('');
   }
 
   //  Merge all the buffers into a single Buffer object.
   return Buffer.concat(chunks);
-
 };
 
 //  Array where all information about all the overridden requests are held.
@@ -447,20 +407,21 @@ var requestOverride = [];
  *   - options - the options of the issued request
  *   - callback - the callback of the issued request
  */
-var overrideRequests = function(newRequest) {
+var overrideRequests = function overrideRequests(newRequest) {
   debug('overriding requests');
 
-  ['http', 'https'].forEach(function(proto) {
+  ['http', 'https'].forEach(function (proto) {
     debug('- overriding request for', proto);
 
-    var moduleName = proto, // 1 to 1 match of protocol and module is fortunate :)
-        module = {
-          http: require('http'),
-          https: require('https')
-        }[moduleName],
+    var moduleName = proto,
+        // 1 to 1 match of protocol and module is fortunate :)
+    module = {
+      http: require('http'),
+      https: require('https')
+    }[moduleName],
         overriddenRequest = module.request;
 
-    if(requestOverride[moduleName]) {
+    if (requestOverride[moduleName]) {
       throw new Error('Module\'s request already overridden for ' + moduleName + ' protocol.');
     }
 
@@ -470,7 +431,7 @@ var overrideRequests = function(newRequest) {
       request: overriddenRequest
     };
 
-    module.request = function(options, callback) {
+    module.request = function (options, callback) {
       // debug('request options:', options);
       return newRequest(proto, overriddenRequest.bind(module), options, callback);
     };
@@ -483,15 +444,15 @@ var overrideRequests = function(newRequest) {
  * Restores `request` function of `http` and `https` modules to values they
  * held before they were overridden by us.
  */
-var restoreOverriddenRequests = function() {
+var restoreOverriddenRequests = function restoreOverriddenRequests() {
   debug('restoring requests');
 
   //  Restore any overridden requests.
-  _(requestOverride).keys().each(function(proto) {
+  _(requestOverride).keys().each(function (proto) {
     debug('- restoring request for', proto);
 
     var override = requestOverride[proto];
-    if(override) {
+    if (override) {
       override.module.request = override.request;
       debug('- restored request for', proto);
     }
@@ -502,15 +463,14 @@ var restoreOverriddenRequests = function() {
 function stringifyRequest(options, body) {
   var method = options.method || 'GET';
 
-  if (body && typeof(body) !== 'string') {
+  if (body && typeof body !== 'string') {
     body = body.toString();
   }
 
   var port = options.port;
-  if (! port) port = (options.proto == 'https' ? '443' : '80');
+  if (!port) port = options.proto == 'https' ? '443' : '80';
 
-  if (options.proto == 'https' && port == '443' ||
-      options.proto == 'http' && port == '80') {
+  if (options.proto == 'https' && port == '443' || options.proto == 'http' && port == '80') {
     port = '';
   }
 
@@ -534,17 +494,17 @@ function isJSONContent(headers) {
   return contentType === 'application/json';
 }
 
-var headersFieldNamesToLowerCase = function(headers) {
-  if(!_.isObject(headers)) {
+var headersFieldNamesToLowerCase = function headersFieldNamesToLowerCase(headers) {
+  if (!_.isObject(headers)) {
     return headers;
   }
 
   //  For each key in the headers, delete its value and reinsert it with lower-case key.
   //  Keys represent headers field names.
   var lowerCaseHeaders = {};
-  _.forOwn(headers, function(fieldVal, fieldName) {
+  _.forOwn(headers, function (fieldVal, fieldName) {
     var lowerCaseFieldName = fieldName.toLowerCase();
-    if(!_.isUndefined(lowerCaseHeaders[lowerCaseFieldName])) {
+    if (!_.isUndefined(lowerCaseHeaders[lowerCaseFieldName])) {
       throw new Error('Failed to convert header keys to lower case due to field name conflict: ' + lowerCaseFieldName);
     }
     lowerCaseHeaders[lowerCaseFieldName] = fieldVal;
@@ -553,7 +513,7 @@ var headersFieldNamesToLowerCase = function(headers) {
   return lowerCaseHeaders;
 };
 
-var headersFieldsArrayToLowerCase = function (headers) {
+var headersFieldsArrayToLowerCase = function headersFieldsArrayToLowerCase(headers) {
   return _.uniq(_.map(headers, function (fieldName) {
     return fieldName.toLowerCase();
   }));
@@ -566,27 +526,26 @@ var headersFieldsArrayToLowerCase = function (headers) {
  * @headers   {Object} headers - object of header field names and values
  * @fieldName {String} field name - string with the case-insensitive field name
  */
-var deleteHeadersField = function(headers, fieldNameToDelete) {
+var deleteHeadersField = function deleteHeadersField(headers, fieldNameToDelete) {
 
-  if(!_.isObject(headers) || !_.isString(fieldNameToDelete)) {
+  if (!_.isObject(headers) || !_.isString(fieldNameToDelete)) {
     return;
   }
 
   var lowerCaseFieldNameToDelete = fieldNameToDelete.toLowerCase();
 
   //  Search through the headers and delete all values whose field name matches the given field name.
-  _(headers).keys().each(function(fieldName) {
+  _(headers).keys().each(function (fieldName) {
     var lowerCaseFieldName = fieldName.toLowerCase();
-    if(lowerCaseFieldName === lowerCaseFieldNameToDelete) {
+    if (lowerCaseFieldName === lowerCaseFieldNameToDelete) {
       delete headers[fieldName];
       //  We don't stop here but continue in order to remove *all* matching field names
       //  (even though if seen regorously there shouldn't be any)
     }
   });
-
 };
 
-function percentDecode (str) {
+function percentDecode(str) {
   try {
     return decodeURIComponent(str.replace(/\+/g, ' '));
   } catch (e) {
@@ -595,7 +554,7 @@ function percentDecode (str) {
 }
 
 function percentEncode(str) {
-  return encodeURIComponent(str).replace(/[!'()*]/g, function(c) {
+  return encodeURIComponent(str).replace(/[!'()*]/g, function (c) {
     return '%' + c.charCodeAt(0).toString(16).toUpperCase();
   });
 }
@@ -620,11 +579,11 @@ function formatQueryValue(key, value, options) {
       value = '';
       break;
     case _.isString(value):
-      if(options.encodedQueryParams) {
+      if (options.encodedQueryParams) {
         value = percentDecode(value);
       }
       break;
-    case (value instanceof RegExp):
+    case value instanceof RegExp:
       break;
     case _.isArray(value):
       var tmpArray = new Array(value.length);
@@ -635,7 +594,7 @@ function formatQueryValue(key, value, options) {
       break;
     case _.isObject(value):
       var tmpObj = {};
-      _.forOwn(value, function(subVal, subKey){
+      _.forOwn(value, function (subVal, subKey) {
         var subPair = formatQueryValue(subKey, subVal, options);
         tmpObj[subPair[0]] = subPair[1];
       });
@@ -648,10 +607,7 @@ function formatQueryValue(key, value, options) {
 }
 
 function isStream(obj) {
-  return obj &&
-      (typeof a !== 'string') &&
-      (! Buffer.isBuffer(obj)) &&
-      _.isFunction(obj.setEncoding);
+  return obj && typeof a !== 'string' && !Buffer.isBuffer(obj) && _.isFunction(obj.setEncoding);
 }
 
 exports.normalizeRequestOptions = normalizeRequestOptions;
@@ -670,8 +626,6 @@ exports.percentDecode = percentDecode;
 exports.matchStringOrRegexp = matchStringOrRegexp;
 exports.formatQueryValue = formatQueryValue;
 exports.isStream = isStream;
-
-
 }).call(this,require("buffer").Buffer)
 },{"buffer":17,"debug":96,"http":47,"https":22,"lodash":103}],4:[function(require,module,exports){
 (function (Buffer,process){
@@ -685,17 +639,18 @@ exports.isStream = isStream;
  * @param  {Integer} ms - The delay in milliseconds
  * @constructor
  */
+
 module.exports = DelayedBody;
 
 var Transform = require('stream').Transform;
 var EventEmitter = require('events').EventEmitter;
-var noop = function () {};
+var noop = function noop() {};
 var util = require('util');
 var common = require('./common');
 
 if (!Transform) {
   // for barebones compatibility for node < 0.10
-  var FakeTransformStream = function () {
+  var FakeTransformStream = function FakeTransformStream() {
     EventEmitter.call(this);
   };
   util.inherits(FakeTransformStream, EventEmitter);
@@ -758,7 +713,9 @@ DelayedBody.prototype._transform = function (chunk, encoding, cb) {
 };
 }).call(this,{"isBuffer":require("../node_modules/browserify/node_modules/insert-module-globals/node_modules/is-buffer/index.js")},require('_process'))
 },{"../node_modules/browserify/node_modules/insert-module-globals/node_modules/is-buffer/index.js":24,"./common":3,"_process":26,"events":21,"stream":46,"util":58}],5:[function(require,module,exports){
-var EventEmitter = require('events').EventEmitter
+'use strict';
+
+var EventEmitter = require('events').EventEmitter;
 
 module.exports = new EventEmitter();
 },{"events":21}],6:[function(require,module,exports){
@@ -770,18 +727,17 @@ module.exports = new EventEmitter();
  */
 
 var RequestOverrider = require('./request_overrider'),
-    common           = require('./common'),
-    url              = require('url'),
-    inherits         = require('util').inherits,
-    Interceptor      = require('./interceptor'),
-    http             = require('http'),
-    parse            = require('url').parse,
-    _                = require('lodash'),
-    debug            = require('debug')('nmock.intercept'),
-    timers           = require('timers'),
-    EventEmitter     = require('events').EventEmitter,
-    globalEmitter    = require('./global_emitter');
-
+    common = require('./common'),
+    url = require('url'),
+    inherits = require('util').inherits,
+    Interceptor = require('./interceptor'),
+    http = require('http'),
+    parse = require('url').parse,
+    _ = require('lodash'),
+    debug = require('debug')('nmock.intercept'),
+    timers = require('timers'),
+    EventEmitter = require('events').EventEmitter,
+    globalEmitter = require('./global_emitter');
 
 /**
  * @name NetConnectNotAllowedError
@@ -796,7 +752,7 @@ var RequestOverrider = require('./request_overrider'),
 function NetConnectNotAllowedError(host, path) {
   Error.call(this);
 
-  this.name    = 'NetConnectNotAllowedError';
+  this.name = 'NetConnectNotAllowedError';
   this.message = 'NMock: Not allow net connect for "' + host + path + '"';
 
   Error.captureStackTrace(this, this.constructor);
@@ -859,7 +815,7 @@ function isOff() {
 }
 
 function add(key, interceptor, scope, scopeOptions, host) {
-  if (! allInterceptors.hasOwnProperty(key)) {
+  if (!allInterceptors.hasOwnProperty(key)) {
     allInterceptors[key] = { key: key, scopes: [] };
   }
   interceptor.__nmock_scope = scope;
@@ -883,7 +839,7 @@ function remove(interceptor) {
   var interceptors = allInterceptors[basePath] && allInterceptors[basePath].scopes || [];
 
   interceptors.some(function (thisInterceptor, i) {
-    return (thisInterceptor === interceptor) ? interceptors.splice(i, 1) : false;
+    return thisInterceptor === interceptor ? interceptors.splice(i, 1) : false;
   });
 }
 
@@ -892,8 +848,7 @@ function removeAll() {
 }
 
 function interceptorsFor(options) {
-  var basePath,
-      matchingInterceptor;
+  var basePath, matchingInterceptor;
 
   common.normalizeRequestOptions(options);
 
@@ -904,13 +859,13 @@ function interceptorsFor(options) {
   debug('filtering interceptors for basepath', basePath);
 
   //  First try to use filteringScope if any of the interceptors has it defined.
-  _.each(allInterceptors, function(interceptor, k) {
-    _.each(interceptor.scopes, function(scope) {
+  _.each(allInterceptors, function (interceptor, k) {
+    _.each(interceptor.scopes, function (scope) {
       var filteringScope = scope.__nmock_scopeOptions.filteringScope;
 
       //  If scope filtering function is defined and returns a truthy value
       //  then we have to treat this as a match.
-      if(filteringScope && filteringScope(basePath)) {
+      if (filteringScope && filteringScope(basePath)) {
         debug('found matching scope interceptor');
 
         //  Keep the filtered scope (its key) to signal the rest of the module
@@ -973,7 +928,7 @@ var originalClientRequest;
 
 function ErroringClientRequest(error) {
   if (http.OutgoingMessage) http.OutgoingMessage.call(this);
-  process.nextTick(function() {
+  process.nextTick(function () {
     this.emit('error', error);
   }.bind(this));
 }
@@ -985,7 +940,7 @@ if (http.ClientRequest) {
 function overrideClientRequest() {
   debug('Overriding ClientRequest');
 
-  if(originalClientRequest) {
+  if (originalClientRequest) {
     throw new Error('NMock already overrode http.ClientRequest');
   }
 
@@ -1002,8 +957,8 @@ function overrideClientRequest() {
       debug('using', interceptors.length, 'interceptors');
 
       //  Use filtered interceptors to intercept requests.
-      var overrider = RequestOverrider(this, options, interceptors, remove, cb);
-      for(var propName in overrider) {
+      var overrider = RequestOverrider.overrideRequest(this, options, interceptors, remove, cb);
+      for (var propName in overrider) {
         if (overrider.hasOwnProperty(propName)) {
           this[propName] = overrider[propName];
         }
@@ -1012,7 +967,7 @@ function overrideClientRequest() {
       debug('falling back to original ClientRequest');
 
       //  Fallback to original ClientRequest if NMock is off or the net connection is enabled.
-      if(isOff() || isEnabledForNetConnect(options)) {
+      if (isOff() || isEnabledForNetConnect(options)) {
         originalClientRequest.apply(this, arguments);
       } else {
         timers.setImmediate(function () {
@@ -1040,7 +995,7 @@ function restoreOverriddenClientRequest() {
   debug('restoring overriden ClientRequest');
 
   //  Restore the ClientRequest we have overridden.
-  if(!originalClientRequest) {
+  if (!originalClientRequest) {
     debug('- ClientRequest was not overridden');
   } else {
     http.ClientRequest = originalClientRequest;
@@ -1055,19 +1010,18 @@ function isActive() {
   //  If ClientRequest has been overwritten by NMock then originalClientRequest is not undefined.
   //  This means that NMock has been activated.
   return !_.isUndefined(originalClientRequest);
-
 }
 
 function isDone() {
-  return _.every(allInterceptors, function(interceptors) {
-    return _.every(interceptors.scopes, function(interceptor) {
+  return _.every(allInterceptors, function (interceptors) {
+    return _.every(interceptors.scopes, function (interceptor) {
       return interceptor.__nmock_scope.isDone();
     });
   });
 }
 
 function pendingMocks() {
-  return _.reduce(allInterceptors, function(result, interceptors) {
+  return _.reduce(allInterceptors, function (result, interceptors) {
     for (var interceptor in interceptors.scopes) {
       result = result.concat(interceptors.scopes[interceptor].__nmock_scope.pendingMocks());
     }
@@ -1078,7 +1032,7 @@ function pendingMocks() {
 
 function activate() {
 
-  if(originalClientRequest) {
+  if (originalClientRequest) {
     throw new Error('NMock already active');
   }
 
@@ -1086,31 +1040,30 @@ function activate() {
 
   // ----- Overriding http.request and https.request:
 
-  common.overrideRequests(function(proto, overriddenRequest, options, callback) {
+  common.overrideRequests(function (proto, overriddenRequest, options, callback) {
     //  NOTE: overriddenRequest is already bound to its module.
-    var req,
-        res;
+    var req, res;
 
     if (typeof options === 'string') {
       options = parse(options);
     }
     options.proto = proto;
 
-    var interceptors = interceptorsFor(options)
+    var interceptors = interceptorsFor(options);
 
     if (isOn() && interceptors) {
       var matches = false,
           allowUnmocked = false;
 
-      matches = !! _.find(interceptors, function(interceptor) {
+      matches = !!_.find(interceptors, function (interceptor) {
         return interceptor.matchIndependentOfBody(options);
       });
 
-      allowUnmocked = !! _.find(interceptors, function(interceptor) {
+      allowUnmocked = !!_.find(interceptors, function (interceptor) {
         return interceptor.options.allowUnmocked;
       });
 
-      if (! matches && allowUnmocked) {
+      if (!matches && allowUnmocked) {
         if (proto === 'https') {
           var ClientRequest = http.ClientRequest;
           http.ClientRequest = originalClientRequest;
@@ -1127,7 +1080,7 @@ function activate() {
       //    our own OverriddenClientRequest.
       req = new http.ClientRequest(options);
 
-      res = RequestOverrider(req, options, interceptors, remove);
+      res = RequestOverrider.overrideRequest(req, options, interceptors, remove);
       if (callback) {
         res.on('response', callback);
       }
@@ -1142,7 +1095,6 @@ function activate() {
       }
     }
   });
-
 }
 
 activate();
@@ -1159,26 +1111,25 @@ module.exports.enableNetConnect = enableNetConnect;
 module.exports.disableNetConnect = disableNetConnect;
 module.exports.overrideClientRequest = overrideClientRequest;
 module.exports.restoreOverriddenClientRequest = restoreOverriddenClientRequest;
-
 }).call(this,require('_process'))
 },{"./common":3,"./global_emitter":5,"./interceptor":7,"./request_overrider":11,"_process":26,"debug":96,"events":21,"http":47,"lodash":103,"timers":54,"url":55,"util":58}],7:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
-var mixin           = require('./mixin')
-    , matchBody       = require('./match_body')
-    , common          = require('./common')
-    , _               = require('lodash')
-    , debug           = require('debug')('nmock.scope')
-    , stringify       = require('json-stringify-safe')
-    , util            = require('util')
-    , qs              = require('qs');
+var mixin = require('./mixin'),
+    matchBody = require('./match_body'),
+    common = require('./common'),
+    _ = require('lodash'),
+    debug = require('debug')('nmock.scope'),
+    stringify = require('json-stringify-safe'),
+    util = require('util'),
+    qs = require('qs');
 
 var fs;
 
 try {
     fs = require('fs');
-} catch(err) {
+} catch (err) {
     // do nothing, we're in the browser
 }
 
@@ -1191,7 +1142,7 @@ function Interceptor(scope, uri, method, requestBody, interceptorOptions) {
     this.uri = uri;
     this._key = this.method + ' ' + scope.basePath + scope.basePathname + (typeof uri === 'string' ? '' : '/') + uri;
     this.basePath = this.scope.basePath;
-    this.path = (typeof uri === 'string') ? scope.basePathname + uri : uri;
+    this.path = typeof uri === 'string' ? scope.basePathname + uri : uri;
 
     this.baseUri = this.method + ' ' + scope.basePath + scope.basePathname;
     this.options = interceptorOptions || {};
@@ -1199,9 +1150,8 @@ function Interceptor(scope, uri, method, requestBody, interceptorOptions) {
     this._requestBody = requestBody;
 
     //  We use lower-case header field names throughout nmock.
-    this.reqheaders = common.headersFieldNamesToLowerCase((scope.scopeOptions && scope.scopeOptions.reqheaders) || {});
-    this.badheaders = common.headersFieldsArrayToLowerCase((scope.scopeOptions && scope.scopeOptions.badheaders) || []);
-
+    this.reqheaders = common.headersFieldNamesToLowerCase(scope.scopeOptions && scope.scopeOptions.reqheaders || {});
+    this.badheaders = common.headersFieldsArrayToLowerCase(scope.scopeOptions && scope.scopeOptions.badheaders || []);
 
     this.delayInMs = 0;
     this.delayConnectionInMs = 0;
@@ -1257,10 +1207,7 @@ Interceptor.prototype.reply = function reply(statusCode, body, headers) {
     //  If the content is not encoded we may need to transform the response body.
     //  Otherwise we leave it as it is.
     if (!common.isContentEncoded(headers)) {
-        if (body && typeof(body) !== 'string' &&
-            typeof(body) !== 'function' &&
-            !Buffer.isBuffer(body) &&
-            !common.isStream(body)) {
+        if (body && typeof body !== 'string' && typeof body !== 'function' && !Buffer.isBuffer(body) && !common.isStream(body)) {
             try {
                 body = stringify(body);
                 if (!this.headers) {
@@ -1272,7 +1219,7 @@ Interceptor.prototype.reply = function reply(statusCode, body, headers) {
                 if (this.scope.contentLen) {
                     this.headers['content-length'] = body.length;
                 }
-            } catch(err) {
+            } catch (err) {
                 throw new Error('Error encoding response body into JSON');
             }
         }
@@ -1285,7 +1232,7 @@ Interceptor.prototype.reply = function reply(statusCode, body, headers) {
 };
 
 Interceptor.prototype.replyWithFile = function replyWithFile(statusCode, filePath, headers) {
-    if (! fs) {
+    if (!fs) {
         throw new Error('No fs');
     }
     var readStream = fs.createReadStream(filePath);
@@ -1295,7 +1242,7 @@ Interceptor.prototype.replyWithFile = function replyWithFile(statusCode, filePat
 };
 
 Interceptor.prototype.replyWithFile = function replyWithFile(statusCode, filePath, headers) {
-    if (! fs) {
+    if (!fs) {
         throw new Error('No fs');
     }
     var readStream = fs.createReadStream(filePath);
@@ -1304,28 +1251,24 @@ Interceptor.prototype.replyWithFile = function replyWithFile(statusCode, filePat
     return this.reply(statusCode, readStream, headers);
 };
 
-
 // Also match request headers
 // https://github.com/pgte/nmock/issues/163
 Interceptor.prototype.reqheaderMatches = function reqheaderMatches(options, key) {
     //  We don't try to match request headers if these weren't even specified in the request.
-    if (! options.headers) {
+    if (!options.headers) {
         return true;
     }
 
     var reqHeader = this.reqheaders[key];
     var header = options.headers[key];
-    if (header && (typeof header !== 'string') && header.toString) {
+    if (header && typeof header !== 'string' && header.toString) {
         header = header.toString();
     }
 
     //  We skip 'host' header comparison unless it's available in both mock and actual request.
     //  This because 'host' may get inserted by nmock itself and then get recorder.
     //  NOTE: We use lower-case header field names throughout nmock.
-    if (key === 'host' &&
-        (_.isUndefined(header) ||
-        _.isUndefined(reqHeader)))
-    {
+    if (key === 'host' && (_.isUndefined(header) || _.isUndefined(reqHeader))) {
         return true;
     }
 
@@ -1350,38 +1293,35 @@ Interceptor.prototype.match = function match(options, body, hostNameOnly) {
         return options.hostname === this.scope.urlParts.hostname;
     }
 
-    var method = (options.method || 'GET').toUpperCase()
-        , path = options.path
-        , matches
-        , matchKey
-        , proto = options.proto;
+    var method = (options.method || 'GET').toUpperCase(),
+        path = options.path,
+        matches,
+        matchKey,
+        proto = options.proto;
 
     if (this.scope.transformPathFunction) {
         path = this.scope.transformPathFunction(path);
     }
-    if (typeof(body) !== 'string') {
+    if (typeof body !== 'string') {
         body = body.toString();
     }
     if (this.scope.transformRequestBodyFunction) {
         body = this.scope.transformRequestBodyFunction(body, this._requestBody);
     }
 
-    var checkHeaders = function(header) {
+    var checkHeaders = function checkHeaders(header) {
         if (_.isFunction(header.value)) {
             return header.value(options.getHeader(header.name));
         }
         return common.matchStringOrRegexp(options.getHeader(header.name), header.value);
     };
 
-    if (!this.scope.matchHeaders.every(checkHeaders) ||
-        !this.interceptorMatchHeaders.every(checkHeaders)) {
+    if (!this.scope.matchHeaders.every(checkHeaders) || !this.interceptorMatchHeaders.every(checkHeaders)) {
         this.scope.logger('headers don\'t match');
         return false;
     }
 
-    var reqHeadersMatch =
-        ! this.reqheaders ||
-        Object.keys(this.reqheaders).every(this.reqheaderMatches.bind(this, options));
+    var reqHeadersMatch = !this.reqheaders || Object.keys(this.reqheaders).every(this.reqheaderMatches.bind(this, options));
 
     if (!reqHeadersMatch) {
         return false;
@@ -1391,9 +1331,7 @@ Interceptor.prototype.match = function match(options, body, hostNameOnly) {
         return _.has(options.headers, header);
     }
 
-    var reqContainsBadHeaders =
-        this.badheaders &&
-        _.some(this.badheaders, reqheaderContains);
+    var reqContainsBadHeaders = this.badheaders && _.some(this.badheaders, reqheaderContains);
 
     if (reqContainsBadHeaders) {
         return false;
@@ -1407,11 +1345,7 @@ Interceptor.prototype.match = function match(options, body, hostNameOnly) {
         matchKey = this.__nmock_filteredScope;
     } else {
         matchKey = proto + '://' + options.host;
-        if (
-            options.port && options.host.indexOf(':') < 0 &&
-            (options.port !== 80 || options.proto !== 'http') &&
-            (options.port !== 443 || options.proto !== 'https')
-        ) {
+        if (options.port && options.host.indexOf(':') < 0 && (options.port !== 80 || options.proto !== 'http') && (options.port !== 443 || options.proto !== 'https')) {
             matchKey += ":" + options.port;
         }
     }
@@ -1429,9 +1363,9 @@ Interceptor.prototype.match = function match(options, body, hostNameOnly) {
         // Only check for query string matches if this.queries is an object
         if (_.isObject(this.queries)) {
 
-            if(_.isFunction(this.queries)){
+            if (_.isFunction(this.queries)) {
                 matchQueries = this.queries(queries);
-            }else {
+            } else {
                 // Make sure that you have an equal number of keys. We are
                 // looping through the passed query params and not the expected values
                 // if the user passes fewer query params than expected but all values
@@ -1449,16 +1383,16 @@ Interceptor.prototype.match = function match(options, body, hostNameOnly) {
                         var expVal = self.queries[key];
                         var isMatch = true;
                         if (val === undefined || expVal === undefined) {
-                        isMatch = false;
-                    } else if (expVal instanceof RegExp) {
-                      isMatch = common.matchStringOrRegexp(val, expVal);
-                    } else if (_.isArray(expVal) || _.isObject(expVal)) {
-                      isMatch = _.isEqual(val, expVal);
-                    } else {
-                      isMatch = common.matchStringOrRegexp(val, expVal);
-                    }
-                matchQueries = matchQueries && !!isMatch;
-                });
+                            isMatch = false;
+                        } else if (expVal instanceof RegExp) {
+                            isMatch = common.matchStringOrRegexp(val, expVal);
+                        } else if (_.isArray(expVal) || _.isObject(expVal)) {
+                            isMatch = _.isEqual(val, expVal);
+                        } else {
+                            isMatch = common.matchStringOrRegexp(val, expVal);
+                        }
+                        matchQueries = matchQueries && !!isMatch;
+                    });
                 }
                 debug('matchQueries: %j', matchQueries);
             }
@@ -1469,26 +1403,20 @@ Interceptor.prototype.match = function match(options, body, hostNameOnly) {
     }
 
     if (typeof this.uri === 'function') {
-        matches = matchQueries &&
-        method.toUpperCase() + ' ' + proto + '://' + options.host === this.baseUri &&
-        this.uri.call(this, path);
+        matches = matchQueries && method.toUpperCase() + ' ' + proto + '://' + options.host === this.baseUri && this.uri.call(this, path);
     } else {
-        matches = method === this.method &&
-        common.matchStringOrRegexp(matchKey, this.basePath) &&
-        common.matchStringOrRegexp(path, this.path) &&
-        matchQueries;
+        matches = method === this.method && common.matchStringOrRegexp(matchKey, this.basePath) && common.matchStringOrRegexp(path, this.path) && matchQueries;
     }
 
     // special logger for query()
     if (queryIndex !== -1) {
-        this.scope.logger('matching ' + matchKey + '?' + queryString + ' to ' + this._key +
-        ' with query(' + stringify(this.queries) + '): ' + matches);
+        this.scope.logger('matching ' + matchKey + '?' + queryString + ' to ' + this._key + ' with query(' + stringify(this.queries) + '): ' + matches);
     } else {
         this.scope.logger('matching ' + matchKey + ' to ' + this._key + ': ' + matches);
     }
 
     if (matches) {
-        matches = (matchBody.call(options, this._requestBody, body));
+        matches = matchBody.call(options, this._requestBody, body);
         if (!matches) {
             this.scope.logger('bodies don\'t match: \n', this._requestBody, '\n', body);
         }
@@ -1498,20 +1426,19 @@ Interceptor.prototype.match = function match(options, body, hostNameOnly) {
 };
 
 Interceptor.prototype.matchIndependentOfBody = function matchIndependentOfBody(options) {
-    var method = (options.method || 'GET').toUpperCase()
-        , path = options.path
-        , proto = options.proto;
+    var method = (options.method || 'GET').toUpperCase(),
+        path = options.path,
+        proto = options.proto;
 
     if (this.scope.transformPathFunction) {
         path = this.scope.transformPathFunction(path);
     }
 
-    var checkHeaders = function(header) {
+    var checkHeaders = function checkHeaders(header) {
         return options.getHeader && common.matchStringOrRegexp(options.getHeader(header.name), header.value);
     };
 
-    if (!this.scope.matchHeaders.every(checkHeaders) ||
-        !this.interceptorMatchHeaders.every(checkHeaders)) {
+    if (!this.scope.matchHeaders.every(checkHeaders) || !this.interceptorMatchHeaders.every(checkHeaders)) {
         return false;
     }
 
@@ -1567,7 +1494,7 @@ Interceptor.prototype.query = function query(queries) {
         this.queries = queries;
     }
 
-    if(_.isFunction(queries)){
+    if (_.isFunction(queries)) {
         this.queries = queries;
         return this;
     }
@@ -1658,8 +1585,7 @@ Interceptor.prototype.delay = function delay(opts) {
         throw new Error("Unexpected input opts" + opts);
     }
 
-    return this.delayConnection(headDelay)
-        .delayBody(bodyDelay);
+    return this.delayConnection(headDelay).delayBody(bodyDelay);
 };
 
 /**
@@ -1684,7 +1610,7 @@ Interceptor.prototype.delayConnection = function delayConnection(ms) {
     return this;
 };
 
-Interceptor.prototype.getTotalDelay =function getTotalDelay() {
+Interceptor.prototype.getTotalDelay = function getTotalDelay() {
     return this.delayInMs + this.delayConnectionInMs;
 };
 
@@ -1698,17 +1624,17 @@ Interceptor.prototype.socketDelay = function socketDelay(ms) {
     this.socketDelayInMs = ms;
     return this;
 };
-
 }).call(this,require("buffer").Buffer)
 },{"./common":3,"./match_body":8,"./mixin":9,"buffer":17,"debug":96,"fs":14,"json-stringify-safe":102,"lodash":103,"qs":106,"util":58}],8:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
+var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol ? "symbol" : typeof obj; };
+
 var deepEqual = require('deep-equal');
 var qs = require('querystring');
 
-module.exports =
-function matchBody(spec, body) {
+module.exports = function matchBody(spec, body) {
   if (typeof spec === 'undefined') {
     return true;
   }
@@ -1718,8 +1644,7 @@ function matchBody(spec, body) {
     body = body.toString();
   }
 
-  var contentType = options.headers && (options.headers['Content-Type'] ||
-                                        options.headers['content-type']);
+  var contentType = options.headers && (options.headers['Content-Type'] || options.headers['content-type']);
 
   var isMultipart = contentType && contentType.toString().match(/multipart/);
 
@@ -1739,8 +1664,10 @@ function matchBody(spec, body) {
 
   // try to transform body to json
   var json;
-  if (typeof spec === 'object' || typeof spec === 'function') {
-    try { json = JSON.parse(body);} catch(err) {}
+  if ((typeof spec === 'undefined' ? 'undefined' : _typeof(spec)) === 'object' || typeof spec === 'function') {
+    try {
+      json = JSON.parse(body);
+    } catch (err) {}
     if (json !== undefined) {
       body = json;
     } else {
@@ -1772,27 +1699,32 @@ function deepEqualExtended(spec, body) {
   }
   return deepEqual(spec, body, { strict: true });
 }
-
 }).call(this,{"isBuffer":require("../node_modules/browserify/node_modules/insert-module-globals/node_modules/is-buffer/index.js")})
 },{"../node_modules/browserify/node_modules/insert-module-globals/node_modules/is-buffer/index.js":24,"deep-equal":99,"querystring":30}],9:[function(require,module,exports){
 'use strict';
+
 var _ = require("lodash");
 
 function mixin(a, b) {
-	if (! a) { a = {}; }
-	if (! b) {b = {}; }
+	if (!a) {
+		a = {};
+	}
+	if (!b) {
+		b = {};
+	}
 	a = _.cloneDeep(a);
-	for(var prop in b) {
+	for (var prop in b) {
 		a[prop] = b[prop];
 	}
 	return a;
 }
 
 module.exports = mixin;
-
 },{"lodash":103}],10:[function(require,module,exports){
 (function (Buffer){
 'use strict';
+
+var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol ? "symbol" : typeof obj; };
 
 var inspect = require('util').inspect;
 var parse = require('url').parse;
@@ -1821,32 +1753,27 @@ function getScope(options) {
   scope.push(options.host);
 
   //  If a non-standard port wasn't specified in options.host, include it from options.port.
-  if(options.host.indexOf(':') === -1 &&
-     options.port &&
-     ((options._https_ && options.port.toString() !== '443') ||
-       (!options._https_ && options.port.toString() !== '80'))) {
+  if (options.host.indexOf(':') === -1 && options.port && (options._https_ && options.port.toString() !== '443' || !options._https_ && options.port.toString() !== '80')) {
     scope.push(':');
     scope.push(options.port);
   }
 
   return scope.join('');
-
 }
 
 function getMethod(options) {
 
-  return (options.method || 'GET');
-
+  return options.method || 'GET';
 }
 
-var getBodyFromChunks = function(chunks, headers) {
+var getBodyFromChunks = function getBodyFromChunks(chunks, headers) {
 
   //  If we have headers and there is content-encoding it means that
   //  the body shouldn't be merged but instead persisted as an array
   //  of hex strings so that the responses can be mocked one by one.
-  if(common.isContentEncoded(headers)) {
-    return _.map(chunks, function(chunk) {
-      if(!Buffer.isBuffer(chunk)) {
+  if (common.isContentEncoded(headers)) {
+    return _.map(chunks, function (chunk) {
+      if (!Buffer.isBuffer(chunk)) {
         if (typeof chunk === 'string') {
           chunk = new Buffer(chunk);
         } else {
@@ -1865,33 +1792,31 @@ var getBodyFromChunks = function(chunks, headers) {
   //    2.  A string buffer which represents a JSON object.
   //    3.  A string buffer which doesn't represent a JSON object.
 
-  if(common.isBinaryBuffer(mergedBuffer)) {
+  if (common.isBinaryBuffer(mergedBuffer)) {
     return mergedBuffer.toString('hex');
   } else {
     var maybeStringifiedJson = mergedBuffer.toString('utf8');
     try {
       return JSON.parse(maybeStringifiedJson);
-    } catch(err) {
+    } catch (err) {
       return maybeStringifiedJson;
     }
   }
-
 };
 
 function generateRequestAndResponseObject(req, bodyChunks, options, res, dataChunks) {
 
   options.path = req.path;
   return {
-    scope:    getScope(options),
-    method:   getMethod(options),
-    path:     options.path,
-    body:     getBodyFromChunks(bodyChunks),
-    status:   res.statusCode,
+    scope: getScope(options),
+    method: getMethod(options),
+    path: options.path,
+    body: getBodyFromChunks(bodyChunks),
+    status: res.statusCode,
     response: getBodyFromChunks(dataChunks, res.headers),
-    headers:  res.headers,
-    reqheaders:   req._headers
+    headers: res.headers,
+    reqheaders: req._headers
   };
-
 }
 
 function generateRequestAndResponse(req, bodyChunks, options, res, dataChunks) {
@@ -1974,7 +1899,7 @@ function record(rec_options) {
   //  Trying to start recording with recording already in progress implies an error
   //  in the recording configuration (double recording makes no sense and used to lead
   //  to duplicates in output)
-  if(recordingInProgress) {
+  if (recordingInProgress) {
     throw new Error('NMock recording already in progress');
   }
 
@@ -1982,12 +1907,11 @@ function record(rec_options) {
 
   //  Originaly the parameters was a dont_print boolean flag.
   //  To keep the existing code compatible we take that case into account.
-  var optionsIsObject = typeof rec_options === 'object';
-  var dont_print = (typeof rec_options === 'boolean' && rec_options) ||
-      (optionsIsObject && rec_options.dont_print);
+  var optionsIsObject = (typeof rec_options === 'undefined' ? 'undefined' : _typeof(rec_options)) === 'object';
+  var dont_print = typeof rec_options === 'boolean' && rec_options || optionsIsObject && rec_options.dont_print;
   var output_objects = optionsIsObject && rec_options.output_objects;
   var enable_reqheaders_recording = optionsIsObject && rec_options.enable_reqheaders_recording;
-  var logging = (optionsIsObject && rec_options.logging) || console.log;
+  var logging = optionsIsObject && rec_options.logging || console.log;
   var use_separator = true;
   if (optionsIsObject && _.has(rec_options, 'use_separator')) {
     use_separator = rec_options.use_separator;
@@ -2003,7 +1927,7 @@ function record(rec_options) {
   intercept.restoreOverriddenClientRequest();
 
   //  We override the requests so that we can save information on them before executing.
-  common.overrideRequests(function(proto, overriddenRequest, options, callback) {
+  common.overrideRequests(function (proto, overriddenRequest, options, callback) {
 
     var bodyChunks = [];
 
@@ -2024,7 +1948,7 @@ function record(rec_options) {
     }
     options._recording = true;
 
-    var req = overriddenRequest(options, function(res) {
+    var req = overriddenRequest(options, function (res) {
 
       debug(thisRecordingId, 'intercepting', proto, 'request to record');
 
@@ -2033,19 +1957,19 @@ function record(rec_options) {
       }
 
       //  We put our 'end' listener to the front of the listener array.
-      res.once('end', function() {
+      res.once('end', function () {
         debug(thisRecordingId, proto, 'intercepted request ended');
 
         var out;
-        if(output_objects) {
+        if (output_objects) {
           out = generateRequestAndResponseObject(req, bodyChunks, options, res, dataChunks);
-          if(out.reqheaders) {
+          if (out.reqheaders) {
             //  We never record user-agent headers as they are worse than useless -
             //  they actually make testing more difficult without providing any benefit (see README)
             common.deleteHeadersField(out.reqheaders, 'user-agent');
 
             //  Remove request headers completely unless it was explicitly enabled by the user (see README)
-            if(!enable_reqheaders_recording) {
+            if (!enable_reqheaders_recording) {
               delete out.reqheaders;
             }
           }
@@ -2063,7 +1987,7 @@ function record(rec_options) {
         //  If you are seeing this error then you need to make sure that all
         //  the requests made during a single recording session finish before
         //  ending the same recording session.
-        if(thisRecordingId !== currentRecordingId) {
+        if (thisRecordingId !== currentRecordingId) {
           debug('skipping recording of an out-of-order request', out);
           return;
         }
@@ -2092,7 +2016,7 @@ function record(rec_options) {
 
       // Replace res.push with our own implementation that stores chunks
       var origResPush = res.push;
-      res.push = function(data) {
+      res.push = function (data) {
         if (data) {
           if (encoding) {
             data = new Buffer(data, encoding);
@@ -2101,7 +2025,7 @@ function record(rec_options) {
         }
 
         return origResPush.call(res, data);
-      }
+      };
 
       if (callback) {
         callback(res, options, callback);
@@ -2114,15 +2038,14 @@ function record(rec_options) {
       if (proto === 'https') {
         options._https_ = true;
       }
-
     });
 
     var oldWrite = req.write;
-    req.write = function(data, encoding) {
-      if ('undefined' !== typeof(data)) {
+    req.write = function (data, encoding) {
+      if ('undefined' !== typeof data) {
         if (data) {
           debug(thisRecordingId, 'new', proto, 'body chunk');
-          if (! Buffer.isBuffer(data)) {
+          if (!Buffer.isBuffer(data)) {
             data = new Buffer(data, encoding);
           }
           bodyChunks.push(data);
@@ -2149,566 +2072,790 @@ function clear() {
 }
 
 exports.record = record;
-exports.outputs = function() {
+exports.outputs = function () {
   return outputs;
 };
 exports.restore = restore;
 exports.clear = clear;
-
 }).call(this,require("buffer").Buffer)
 },{"./common":3,"./intercept":6,"buffer":17,"debug":96,"lodash":103,"stream":46,"url":55,"util":58}],11:[function(require,module,exports){
 (function (process,Buffer){
 'use strict';
 
-var EventEmitter     = require('events').EventEmitter,
-    http             = require('http'),
-    propagate        = require('propagate'),
-    DelayedBody      = require('./delayed_body'),
-    IncomingMessage  = http.IncomingMessage,
-    ClientRequest    = http.ClientRequest,
-    common           = require('./common'),
-    Socket           = require('./socket'),
-    _                = require('lodash'),
-    debug            = require('debug')('nmock.request_overrider'),
-    timers           = require('timers'),
-    ReadableStream   = require('stream').Readable,
-    globalEmitter    = require('./global_emitter');
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
-function getHeader(request, name) {
-  if (!request._headers) {
-    return;
-  }
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
-  var key = name.toLowerCase();
+var _require = require('events');
 
-  return request._headers[key];
+var EventEmitter = _require.EventEmitter;
+
+var http = require('http');
+var propagate = require('propagate');
+var DelayedBody = require('./delayed_body');
+var IncomingMessage = http.IncomingMessage;
+var ClientRequest = http.ClientRequest;
+var common = require('./common');
+var Socket = require('./socket');
+var _ = require('lodash');
+var debug = require('debug')('nmock.request_overrider');
+var timers = require('timers');
+var ReadableStream = require('stream').Readable;
+var globalEmitter = require('./global_emitter');
+
+function _getHeader(request, name) {
+    if (!request._headers) {
+        return;
+    }
+
+    var key = name.toLowerCase();
+
+    return request._headers[key];
 }
 
 function setHeader(request, name, value) {
-  debug('setHeader', name, value);
+    debug('setHeader', name, value);
 
-  var key = name.toLowerCase();
+    var key = name.toLowerCase();
 
-  request._headers = request._headers || {};
-  request._headerNames = request._headerNames || {};
-  request._removedHeader = request._removedHeader || {};
+    request._headers = request._headers || {};
+    request._headerNames = request._headerNames || {};
+    request._removedHeader = request._removedHeader || {};
 
-  request._headers[key] = value;
-  request._headerNames[key] = name;
+    request._headers[key] = value;
+    request._headerNames[key] = name;
 
-  if (name == 'expect' && value == '100-continue') {
-    timers.setImmediate(function() {
-      debug('continue');
-      request.emit('continue');
-    });
-  }
+    if (name == 'expect' && value == '100-continue') {
+        timers.setImmediate(function () {
+            debug('continue');
+            request.emit('continue');
+        });
+    }
 }
 
 //  Sets request headers of the given request. This is needed during both matching phase
 //  (in case header filters were specified) and mocking phase (to correctly pass mocked
 //  request headers).
 function setRequestHeaders(req, options, interceptor) {
-  //  We mock request headers if these were specified.
-  if (interceptor.reqheaders) {
-    _.forOwn(interceptor.reqheaders, function(val, key) {
-      setHeader(req, key, val);
-    });
-  }
-
-  //  If a filtered scope is being used we have to use scope's host
-  //  in the header, otherwise 'host' header won't match.
-  //  NOTE: We use lower-case header field names throught NMock.
-  var HOST_HEADER = 'host';
-  if(interceptor.__nmock_filteredScope && interceptor.__nmock_scopeHost) {
-    if(options && options.headers) {
-      options.headers[HOST_HEADER] = interceptor.__nmock_scopeHost;
+    //  We mock request headers if these were specified.
+    if (interceptor.reqheaders) {
+        _.forOwn(interceptor.reqheaders, function (val, key) {
+            setHeader(req, key, val);
+        });
     }
-    setHeader(req, HOST_HEADER, interceptor.__nmock_scopeHost);
-  } else {
-    //  For all other cases, we always add host header equal to the
-    //  requested host unless it was already defined.
-    if (options.host && !getHeader(req, HOST_HEADER)) {
-      var hostHeader = options.host;
 
-      if (options.port === 80 || options.port === 443) {
-        hostHeader = hostHeader.split(':')[0];
-      }
+    //  If a filtered scope is being used we have to use scope's host
+    //  in the header, otherwise 'host' header won't match.
+    //  NOTE: We use lower-case header field names throught NMock.
+    var HOST_HEADER = 'host';
+    if (interceptor.__nmock_filteredScope && interceptor.__nmock_scopeHost) {
+        if (options && options.headers) {
+            options.headers[HOST_HEADER] = interceptor.__nmock_scopeHost;
+        }
+        setHeader(req, HOST_HEADER, interceptor.__nmock_scopeHost);
+    } else {
+        //  For all other cases, we always add host header equal to the
+        //  requested host unless it was already defined.
+        if (options.host && !_getHeader(req, HOST_HEADER)) {
+            var hostHeader = options.host;
 
-      setHeader(req, HOST_HEADER, hostHeader);
+            if (options.port === 80 || options.port === 443) {
+                hostHeader = hostHeader.split(':')[0];
+            }
+
+            setHeader(req, HOST_HEADER, hostHeader);
+        }
     }
-  }
-
 }
 
-function RequestOverrider(req, options, interceptors, remove, cb) {
-  var response;
-  if (IncomingMessage) {
-    response = new IncomingMessage(new EventEmitter());
-  } else {
-    response = new ReadableStream();
-    response._read = function() {};
-  }
+function getFormattedHeaders(headers) {
+    if (headers) {
+        headers = common.headersFieldNamesToLowerCase(headers);
 
-  var requestBodyBuffers = [],
-      aborted,
-      emitError,
-      end,
-      ended,
-      headers,
-      keys,
-      key,
-      i,
-      l;
-
-  //  We may be changing the options object and we don't want those
-  //  changes affecting the user so we use a clone of the object.
-  options = _.clone(options) || {};
-
-  response.req = req;
-
-  if (options.headers) {
-    //  We use lower-case header field names throught NMock.
-    options.headers = common.headersFieldNamesToLowerCase(options.headers);
-
-    headers = options.headers;
-    _.forOwn(headers, function(val, key) {
-      setHeader(req, key, val);
-    });
-  }
-
-  /// options.auth
-  if (options.auth && (! options.headers || ! options.headers.authorization)) {
-    setHeader(req, 'Authorization', 'Basic ' + (new Buffer(options.auth)).toString('base64'));
-  }
-
-  if (! req.connection) {
-    req.connection = new EventEmitter();
-  }
-
-  req.path = options.path;
-
-  options.getHeader = function(name) {
-    return getHeader(req, name);
-  };
-
-  req.socket = response.socket = Socket({ proto: options.proto });
-
-  req.write = function(buffer, encoding) {
-    debug('write', arguments);
-    if (buffer && !aborted) {
-      if (! Buffer.isBuffer(buffer)) {
-        buffer = new Buffer(buffer, encoding);
-      }
-      requestBodyBuffers.push(buffer);
-    }
-    if (aborted) {
-      emitError(new Error('Request aborted'));
-    }
-
-    timers.setImmediate(function() {
-      req.emit('drain');
-    });
-
-    return false;
-  };
-
-  req.end = function(buffer, encoding) {
-    debug('req.end');
-    if (!aborted && !ended) {
-      req.write(buffer, encoding);
-      end(cb);
-      req.emit('finish');
-      req.emit('end');
-    }
-    if (aborted) {
-      emitError(new Error('Request aborted'));
-    }
-  };
-
-  req.abort = function() {
-    debug('req.abort');
-    aborted = true;
-    if (!ended) {
-      end();
-    }
-    var err = new Error();
-    err.code = 'aborted';
-    response.emit('close', err);
-
-    req.socket.destroy();
-
-    req.emit('abort');
-
-    var connResetError = new Error('socket hang up');
-    connResetError.code = 'ECONNRESET';
-    emitError(connResetError);
-  };
-
-  // restify listens for a 'socket' event to
-  // be emitted before calling end(), which causes
-  // NMock to hang with restify. The following logic
-  // fakes the socket behavior for restify,
-  // Fixes: https://github.com/pgte/nock/issues/79
-  req.once = req.on = function(event, listener) {
-    // emit a fake socket.
-    if (event == 'socket') {
-      listener(req.socket);
-      req.socket.emit('connect', req.socket);
-      req.socket.emit('secureConnect', req.socket);
-    }
-
-    EventEmitter.prototype.on.call(this, event, listener);
-    return this;
-  };
-
-  emitError = function(error) {
-    process.nextTick(function () {
-      req.emit('error', error);
-    });
-  };
-
-  end = function(cb) {
-    debug('ending');
-    ended = true;
-    var requestBody,
-        responseBody,
-        responseBuffers,
-        interceptor;
-
-    var continued = false;
-
-    //  When request body is a binary buffer we internally use in its hexadecimal representation.
-    var requestBodyBuffer = common.mergeChunks(requestBodyBuffers);
-    var isBinaryRequestBodyBuffer = common.isBinaryBuffer(requestBodyBuffer);
-    if(isBinaryRequestBodyBuffer) {
-      requestBody = requestBodyBuffer.toString('hex');
-    } else {
-      requestBody = requestBodyBuffer.toString('utf8');
-    }
-
-    /// put back the path into options
-    /// because bad behaving agents like superagent
-    /// like to change request.path in mid-flight.
-    options.path = req.path;
-
-    interceptors.forEach(function(interceptor) {
-      //  For correct matching we need to have correct request headers - if these were specified.
-      setRequestHeaders(req, options, interceptor);
-    });
-
-    interceptor = _.find(interceptors, function(interceptor) {
-      return interceptor.match(options, requestBody);
-    });
-
-    if (!interceptor) {
-      globalEmitter.emit('no match', req, options, requestBody);
-      // Try to find a hostname match
-      interceptor = _.find(interceptors, function(interceptor) {
-        return interceptor.match(options, requestBody, true);
-      });
-      if (interceptor && req instanceof ClientRequest) {
-        if (interceptor.options.allowUnmocked) {
-          var newReq = new ClientRequest(options, cb);
-          propagate(newReq, req);
-          //  We send the raw buffer as we received it, not as we interpreted it.
-          newReq.end(requestBodyBuffer);
-          return;
-        }
-      }
-
-      var err = new Error("NMock: No match for request " + common.stringifyRequest(options, requestBody));
-      err.statusCode = err.status = 404;
-      emitError(err);
-      return;
-    }
-
-    debug('interceptor identified, starting mocking');
-
-    //  We again set request headers, now for our matched interceptor.
-    setRequestHeaders(req, options, interceptor);
-    interceptor.req = req;
-    req.headers = req._headers;
-
-    interceptor.scope.emit('request', req, interceptor);
-
-    if (typeof interceptor.errorMessage !== 'undefined') {
-      interceptor.interceptionCounter++;
-      remove(interceptor);
-      interceptor.discard();
-
-      var error;
-      if (_.isObject(interceptor.errorMessage)) {
-        error = interceptor.errorMessage;
-      } else {
-        error = new Error(interceptor.errorMessage);
-      }
-      timers.setTimeout(emitError, interceptor.getTotalDelay(), error);
-      return;
-    }
-    response.statusCode = Number(interceptor.statusCode) || 200;
-
-    // Clone headers/rawHeaders to not override them when evaluating later
-    response.headers = _.extend({}, interceptor.headers);
-    response.rawHeaders = (interceptor.rawHeaders || []).slice();
-    debug('response.rawHeaders:', response.rawHeaders);
-
-
-    if (typeof interceptor.body === 'function') {
-      if (requestBody && common.isJSONContent(options.headers)) {
-        requestBody = JSON.parse(requestBody);
-      }
-
-      // In case we are waiting for a callback
-      if (interceptor.body.length === 3) {
-        return interceptor.body(options.path, requestBody || '', continueWithResponseBody);
-      }
-
-      responseBody = interceptor.body(options.path, requestBody) || '';
-
-    } else {
-
-      //  If the content is encoded we know that the response body *must* be an array
-      //  of response buffers which should be mocked one by one.
-      //  (otherwise decompressions after the first one fails as unzip expects to receive
-      //  buffer by buffer and not one single merged buffer)
-      if(common.isContentEncoded(response.headers) && ! common.isStream(interceptor.body)) {
-
-        if (interceptor.delayInMs) {
-          emitError(new Error('Response delay is currently not supported with content-encoded responses.'));
-          return;
-        }
-
-        var buffers = interceptor.body;
-        if(!_.isArray(buffers)) {
-          buffers = [buffers];
-        }
-
-        responseBuffers = _.map(buffers, function(buffer) {
-          return new Buffer(buffer, 'hex');
+        _.forOwn(headers, function (val, key) {
+            setHeader(req, key, val);
         });
+    }
+}
 
-      } else {
+var RequestOverrider = function () {
+    function RequestOverrider(req, options, interceptors, removeInterceptor, callback) {
+        _classCallCheck(this, RequestOverrider);
 
-        responseBody = interceptor.body;
+        this._req = req;
+        this._options = _.merge(_.clone(options), {
+            getHeader: function getHeader(name) {
+                return _getHeader(req, name);
+            }
+        });
+        this._interceptors = interceptors;
+        this._removeInterceptor = removeInterceptor;
 
-        //  If the request was binary then we assume that the response will be binary as well.
-        //  In that case we send the response as a Buffer object as that's what the client will expect.
-        if(isBinaryRequestBodyBuffer && typeof(responseBody) === 'string') {
-          //  Try to create the buffer from the interceptor's body response as hex.
-          try {
-            responseBody = new Buffer(responseBody, 'hex');
-          } catch(err) {
-            debug('exception during Buffer construction from hex data:', responseBody, '-', err);
-          }
+        this._requestBodyBuffers = [];
+        this._callback = callback;
 
-          // Creating buffers does not necessarily throw errors, check for difference in size
-          if (!responseBody || (interceptor.body.length > 0 && responseBody.length === 0)) {
-            //  We fallback on constructing buffer from utf8 representation of the body.
-            responseBody = new Buffer(interceptor.body, 'utf8');
-          }
+        if (IncomingMessage) {
+            this._response = new IncomingMessage(new EventEmitter());
+        } else {
+            this._response = new ReadableStream();
+            this._response._read = function () {};
         }
-      }
+        this._response.req = this._req;
+        this._req.socket = this._response.socket = new Socket({ proto: options.proto });
+
+        this.setHeaders();
+        this.overrideRequest();
     }
 
-    return continueWithResponseBody(null, responseBody);
+    _createClass(RequestOverrider, [{
+        key: 'setHeaders',
+        value: function setHeaders() {
+            var _this = this;
 
-    function continueWithResponseBody(err, responseBody) {
+            var _options = this._options;
+            var headers = _options.headers;
+            var auth = _options.auth;
 
-      if (continued) {
-        return;
-      }
-      continued = true;
 
-      if (err) {
-        response.statusCode = 500;
-        responseBody = err.stack;
-      }
+            if (headers) {
+                // We use lower-case header field names throught NMock.
+                headers = common.headersFieldNamesToLowerCase(headers);
 
-      //  Transform the response body if it exists (it may not exist
-      //  if we have `responseBuffers` instead)
+                _.forOwn(headers, function (val, key) {
+                    setHeader(_this._req, key, val);
+                });
+            }
 
-      if (responseBody) {
-        debug('transform the response body');
+            if (auth && (!headers || !headers.authorization)) {
+                setHeader(this._req, 'Authorization', 'Basic ' + new Buffer(auth).toString('base64'));
+            }
 
-        if (Array.isArray(responseBody) &&
-            responseBody.length >= 2 &&
-            responseBody.length <= 3 &&
-            typeof responseBody[0] == 'number')
-        {
-          debug('response body is array: %j', responseBody);
-          response.statusCode = Number(responseBody[0]);
-          debug('new headers: %j', responseBody[2]);
-          if (! response.headers) response.headers = {};
-          _.assign(response.headers, responseBody[2] || {});
-          debug('response.headers after: %j', response.headers);
-          responseBody = responseBody[1];
+            this._options.headers = headers;
+        }
+    }, {
+        key: 'overrideRequest',
+        value: function overrideRequest() {
+            var _this2 = this;
 
-          response.rawHeaders = response.rawHeaders || [];
-          Object.keys(response.headers).forEach(function(key) {
-            response.rawHeaders.push(key, response.headers[key]);
-          });
+            var req = this._req;
+            var options = this._options;
+
+
+            if (!req.connection) {
+                req.connection = new EventEmitter();
+            }
+
+            req.path = options.path;
+
+            req.write = function (buffer, encoding) {
+                return _this2.requestWrite(buffer, encoding);
+            };
+            req.end = function (buffer, encoding) {
+                return _this2.requestEnd(buffer, encoding);
+            };
+            req.abort = function () {
+                return _this2.requestAbort();
+            };
+            req.on = req.once = function (event, listener) {
+                return _this2.addRequestEventListener(event, listener);
+            };
+        }
+    }, {
+        key: 'requestWrite',
+        value: function requestWrite(buffer, encoding) {
+            var _this3 = this;
+
+            debug('write', arguments);
+            if (buffer && !this.aborted) {
+                if (!Buffer.isBuffer(buffer)) {
+                    buffer = new Buffer(buffer, encoding);
+                }
+                this._requestBodyBuffers.push(buffer);
+            }
+            if (this._aborted) {
+                this.emitError(new Error('Request aborted'));
+            }
+
+            timers.setImmediate(function () {
+                return _this3._req.emit('drain');
+            });
+
+            return false;
+        }
+    }, {
+        key: 'requestEnd',
+        value: function requestEnd(buffer, encoding) {
+            debug('req.end');
+            if (!this._aborted && !this._ended) {
+                this._req.write(buffer, encoding);
+
+                this.end(this._callback);
+
+                this._req.emit('finish');
+                this._req.emit('end');
+            }
+            if (this._aborted) {
+                this.emitError(new Error('Request aborted'));
+            }
+        }
+    }, {
+        key: 'requestAbort',
+        value: function requestAbort() {
+            debug('req.abort');
+            this._aborted = true;
+
+            if (!this._ended) {
+                this.end();
+            }
+            var err = new Error();
+            err.code = 'aborted';
+            this._response.emit('close', err);
+
+            this._req.socket.destroy();
+            this._req.emit('abort');
+
+            var connResetError = new Error('socket hang up');
+            connResetError.code = 'ECONNRESET';
+            this.emitError(connResetError);
+        }
+    }, {
+        key: 'addRequestEventListener',
+        value: function addRequestEventListener(event, listener) {
+            var req = this._req;
+
+            /*
+             restify listens for a 'socket' event to be emitted before calling end(),
+             which causes NMock to hang with restify.
+             The following logic fakes the socket behavior for restify,
+             Fixes: https://github.com/pgte/nock/issues/79
+             */
+            if (event == 'socket') {
+                listener(req.socket);
+                req.socket.emit('connect', req.socket);
+                req.socket.emit('secureConnect', req.socket);
+            }
+
+            EventEmitter.prototype.on.call(req, event, listener);
+            return req;
+        }
+    }, {
+        key: 'end',
+        value: function end() {
+            debug('ending');
+            this._ended = true;
+            this._continued = false;
+
+            /*
+             put back the path into options
+             because bad behaving agents like superagent
+             like to change request.path in mid-flight.
+             */
+            this._options.path = this._req.path;
+
+            var interceptor = this.getInterceptor();
+
+            if (!interceptor) {
+                globalEmitter.emit('no match', this._req, this._options, this.getRequestBody());
+
+                var hostInterceptor = this.getHostInterceptor();
+                if (this.canDoUnmockedRequest(hostInterceptor)) {
+                    this.unmockedRequest();
+
+                    return;
+                }
+
+                var err = new Error('NMock: No match for request ' + common.stringifyRequest(this._options, this.getRequestBody()));
+
+                err.statusCode = err.status = 404;
+                this.emitError(err);
+
+                return;
+            }
+
+            this.mockRequest(interceptor);
         }
 
-        if (interceptor.delayInMs) {
-          debug('delaying the response for', interceptor.delayInMs, 'milliseconds');
-          // Because setTimeout is called immediately in DelayedBody(), so we
-          // need count in the delayConnectionInMs.
-          responseBody = new DelayedBody(interceptor.getTotalDelay(), responseBody);
+        /**
+         * get an interceptor to use for mocking
+         *
+         * @returns {Interceptor | null}
+         */
+
+    }, {
+        key: 'getInterceptor',
+        value: function getInterceptor() {
+            var interceptors = this._interceptors;
+            var req = this._req;
+            var options = this._options;
+
+
+            var requestBody = this.getRequestBody();
+
+            // For correct matching we need to have correct request headers - if these were specified.
+            interceptors.forEach(function (interceptor) {
+                return setRequestHeaders(req, options, interceptor);
+            });
+
+            return _.find(interceptors, function (interceptor) {
+                return interceptor.match(options, requestBody);
+            });
         }
 
-        if (common.isStream(responseBody)) {
-          debug('response body is a stream');
-          responseBody.pause();
-          responseBody.on('data', function(d) {
-            response.push(d);
-          });
-          responseBody.on('end', function() {
-            response.push(null);
-          });
-          responseBody.on('error', function(err) {
-            response.emit('error', err);
-          });
-        } else if (responseBody && !Buffer.isBuffer(responseBody)) {
-          if (typeof responseBody === 'string') {
-            responseBody = new Buffer(responseBody);
-          } else {
-            responseBody = JSON.stringify(responseBody);
-            response.headers['content-type'] = 'application/json';
-          }
-        }
-      }
+        /**
+         * we using HostInterceptor when we haven't found any interceptors matched with our request
+         * if we found HostInterceptor, we probably can pass unmocked request without any interception
+         */
 
-      interceptor.interceptionCounter++;
-      remove(interceptor);
-      interceptor.discard();
+    }, {
+        key: 'getHostInterceptor',
+        value: function getHostInterceptor() {
+            var _this4 = this;
 
-      if (aborted) { return; }
-
-      /// response.client.authorized = true
-      /// fixes https://github.com/pgte/nock/issues/158
-      response.client = _.extend(response.client || {}, {
-        authorized: true
-      });
-
-      // Account for updates to Node.js response interface
-      // cf https://github.com/request/request/pull/1615
-      response.socket = _.extend(response.socket || {}, {
-        authorized: true
-      });
-
-      // Evaluate functional headers.
-      var evaluatedHeaders = {}
-      Object.keys(response.headers).forEach(function (key) {
-        var value = response.headers[key];
-
-        if (typeof value === "function") {
-          response.headers[key] = evaluatedHeaders[key] = value(req, response, responseBody);
-        }
-      });
-
-      for(var rawHeaderIndex = 0 ; rawHeaderIndex < response.rawHeaders.length ; rawHeaderIndex += 2) {
-        var key = response.rawHeaders[rawHeaderIndex];
-        var value = response.rawHeaders[rawHeaderIndex + 1];
-        if (typeof value === "function") {
-          response.rawHeaders[rawHeaderIndex + 1] = evaluatedHeaders[key];
-        }
-      }
-
-
-      process.nextTick(respond);
-
-      function respond() {
-
-        if (aborted) { return; }
-
-        if (interceptor.socketDelayInMs && interceptor.socketDelayInMs > 0) {
-          req.socket.applyDelay(interceptor.socketDelayInMs);
+            return _.find(this._interceptors, function (interceptor) {
+                return interceptor.match(_this4._options, _this4.getRequestBody(), true);
+            });
         }
 
-        if (interceptor.delayConnectionInMs && interceptor.delayConnectionInMs > 0) {
-          setTimeout(_respond, interceptor.delayConnectionInMs);
-        } else {
-          _respond();
+        /**
+         * return request body buffer as result of merging chunks from requestBodyBuffers
+         * @returns {*}
+         */
+
+    }, {
+        key: 'getRequestBodyBuffer',
+        value: function getRequestBodyBuffer() {
+            return common.mergeChunks(this._requestBodyBuffers);
+        }
+    }, {
+        key: 'getRequestBody',
+        value: function getRequestBody() {
+            // When request body is a binary buffer we internally use in its hexadecimal representation.
+
+            var requestBodyBuffer = this.getRequestBodyBuffer();
+            var isBinaryRequestBodyBuffer = common.isBinaryBuffer(requestBodyBuffer);
+
+            return isBinaryRequestBodyBuffer ? requestBodyBuffer.toString('hex') : requestBodyBuffer.toString('utf8');
+        }
+    }, {
+        key: 'isRequestBodyBufferBinary',
+        value: function isRequestBodyBufferBinary() {
+            var requestBodyBuffer = this.getRequestBodyBuffer();
+            return common.isBinaryBuffer(requestBodyBuffer);
+        }
+    }, {
+        key: 'canDoUnmockedRequest',
+        value: function canDoUnmockedRequest(hostInterceptor) {
+            return hostInterceptor && this._req instanceof ClientRequest && hostInterceptor.options.allowUnmocked;
         }
 
-        function _respond() {
-          if (aborted) { return; }
+        /**
+         * send a request without any interceptions
+         */
 
-          debug('emitting response');
+    }, {
+        key: 'unmockedRequest',
+        value: function unmockedRequest() {
+            var newReq = new ClientRequest(this._options, this._callback);
+            propagate(newReq, this._req);
 
-          if (typeof cb === 'function') {
-            debug('callback with response');
-            cb(response);
-          }
+            //  We send the raw buffer as we received it, not as we interpreted it.
+            newReq.end(this.getRequestBodyBuffer());
+        }
+    }, {
+        key: 'mockRequest',
+        value: function mockRequest(interceptor) {
+            debug('interceptor identified, starting mocking');
 
-          if (aborted) {
-            emitError(new Error('Request aborted'));
-          }
-          else {
-            req.emit('response', response);
-          }
+            var req = this._req;
+            var options = this._options;
+            var response = this._response;
 
-          if (common.isStream(responseBody)) {
-            debug('resuming response stream');
-            responseBody.resume();
-          }
-          else {
-            responseBuffers = responseBuffers || [];
-            if (typeof responseBody !== "undefined") {
-              debug('adding body to buffer list');
-              responseBuffers.push(responseBody);
+            //  We again set request headers, now for our matched interceptor.
+
+            setRequestHeaders(req, options, interceptor);
+            interceptor.req = req;
+            req.headers = req._headers;
+
+            interceptor.scope.emit('request', req, interceptor);
+
+            if (typeof interceptor.errorMessage !== 'undefined') {
+                //TODO: write hasError method
+                this.handleInterceptorError(interceptor);
+
+                return;
+            }
+
+            response.statusCode = Number(interceptor.statusCode) || 200;
+
+            // Clone headers/rawHeaders to not override them when evaluating later
+            response.headers = _.extend({}, interceptor.headers);
+            response.rawHeaders = (interceptor.rawHeaders || []).slice();
+            debug('response.rawHeaders:', response.rawHeaders);
+
+            if (this.isInterceptorWaitsCallback(interceptor)) {
+                this.runInterceptorWithCallback(interceptor);
+
+                return;
+            }
+
+            this.continueWithResponseBody(null, this.getResponseBody(interceptor), interceptor);
+        }
+    }, {
+        key: 'handleInterceptorError',
+        value: function handleInterceptorError(interceptor) {
+            var _this5 = this;
+
+            interceptor.interceptionCounter++;
+            this._removeInterceptor(interceptor);
+            interceptor.discard();
+
+            var error = void 0;
+            if (_.isObject(interceptor.errorMessage)) {
+                error = interceptor.errorMessage;
+            } else {
+                error = new Error(interceptor.errorMessage);
+            }
+
+            timers.setTimeout(function (err) {
+                return _this5.emitError(err);
+            }, interceptor.getTotalDelay(), error);
+        }
+    }, {
+        key: 'isInterceptorWaitsCallback',
+        value: function isInterceptorWaitsCallback(interceptor) {
+            return typeof interceptor.body === 'function' && interceptor.body.length === 3;
+        }
+    }, {
+        key: 'runInterceptorWithCallback',
+        value: function runInterceptorWithCallback(interceptor) {
+            var _this6 = this;
+
+            if (typeof interceptor.body === 'function') {
+                var requestBody = this.getRequestBody();
+
+                if (requestBody && common.isJSONContent(this._options.headers)) {
+                    requestBody = JSON.parse(requestBody);
+                }
+
+                interceptor.body(this._options.path, requestBody || '', function (error, body) {
+                    return _this6.continueWithResponseBody(error, body, interceptor);
+                });
+            }
+        }
+    }, {
+        key: 'getResponseBody',
+        value: function getResponseBody(interceptor) {
+            if (typeof interceptor.body === 'function') {
+                var requestBody = this.getRequestBody();
+
+                if (requestBody && common.isJSONContent(this._options.headers)) {
+                    requestBody = JSON.parse(requestBody);
+                }
+
+                if (interceptor.body.length !== 3) {
+                    return interceptor.body(this._options.path, requestBody) || '';
+                }
+
+                return requestBody;
+            }
+
+            if (!common.isContentEncoded(this._response.headers) || common.isStream(interceptor.body)) {
+                var responseBody = interceptor.body;
+
+                //  If the request was binary then we assume that the response will be binary as well.
+                //  In that case we send the response as a Buffer object as that's what the client will expect.
+                if (this.isRequestBodyBufferBinary() && typeof responseBody === 'string') {
+                    //  Try to create the buffer from the interceptor's body response as hex.
+                    try {
+                        responseBody = new Buffer(responseBody, 'hex');
+                    } catch (err) {
+                        debug('exception during Buffer construction from hex data:', responseBody, '-', err);
+                    }
+
+                    // Creating buffers does not necessarily throw errors, check for difference in size
+                    if (!responseBody || interceptor.body.length > 0 && responseBody.length === 0) {
+                        //  We fallback on constructing buffer from utf8 representation of the body.
+                        responseBody = new Buffer(interceptor.body, 'utf8');
+                    }
+                }
+
+                return responseBody;
+            }
+        }
+    }, {
+        key: 'getResponseBuffers',
+        value: function getResponseBuffers(interceptor) {
+            /* 
+             If the content is encoded we know that the response body *must* be an array
+             of response buffers which should be mocked one by one.
+             (otherwise decompressions after the first one fails as unzip expects to receive
+             buffer by buffer and not one single merged buffer)
+             */
+
+            if (common.isContentEncoded(this._response.headers) && !common.isStream(interceptor.body)) {
+                if (interceptor.delayInMs) {
+                    //TODO: it should break execution of this.end()
+                    this.emitError(new Error('Response delay is currently not supported with content-encoded responses.'));
+                    return;
+                }
+
+                var buffers = interceptor.body;
+                if (!_.isArray(buffers)) {
+                    buffers = [buffers];
+                }
+
+                return _.map(buffers, function (buffer) {
+                    return new Buffer(buffer, 'hex');
+                });
+            }
+        }
+    }, {
+        key: 'continueWithResponseBody',
+        value: function continueWithResponseBody(err, responseBody, interceptor) {
+            var _this7 = this;
+
+            var response = this._response;
+
+            if (this._continued) {
+                return;
+            }
+            this._continued = true;
+
+            if (err) {
+                response.statusCode = 500;
+                responseBody = err.stack;
+            }
+
+            if (responseBody) {
+                responseBody = this.transformResponseBody(responseBody, interceptor);
+            }
+
+            interceptor.interceptionCounter++;
+            this._removeInterceptor(interceptor);
+            interceptor.discard();
+
+            if (this._aborted) {
+                return;
+            }
+
+            /// response.client.authorized = true
+            /// fixes https://github.com/pgte/nock/issues/158
+            response.client = _.extend(response.client || {}, {
+                authorized: true
+            });
+
+            // Account for updates to Node.js response interface
+            // cf https://github.com/request/request/pull/1615
+            response.socket = _.extend(response.socket || {}, {
+                authorized: true
+            });
+
+            // Evaluate functional headers.
+            var evaluatedHeaders = {};
+            Object.keys(response.headers).forEach(function (key) {
+                var value = response.headers[key];
+
+                if (typeof value === 'function') {
+                    response.headers[key] = evaluatedHeaders[key] = value(_this7._req, response, responseBody);
+                }
+            });
+
+            for (var rawHeaderIndex = 0; rawHeaderIndex < response.rawHeaders.length; rawHeaderIndex += 2) {
+                var key = response.rawHeaders[rawHeaderIndex];
+                var value = response.rawHeaders[rawHeaderIndex + 1];
+                if (typeof value === 'function') {
+                    response.rawHeaders[rawHeaderIndex + 1] = evaluatedHeaders[key];
+                }
+            }
+
+            process.nextTick(function () {
+                return _this7.respondWrapper(interceptor, responseBody);
+            });
+        }
+    }, {
+        key: 'transformResponseBody',
+        value: function transformResponseBody(responseBody, interceptor) {
+            debug('transform the response body');
+
+            var response = this._response;
+            var isResponseBodyArray = Array.isArray(responseBody) && responseBody.length >= 2 && responseBody.length <= 3 && typeof responseBody[0] == 'number';
+
+            if (isResponseBodyArray) {
+                debug('response body is array: %j', responseBody);
+
+                response.statusCode = Number(responseBody[0]);
+
+                debug('new headers: %j', responseBody[2]);
+                if (!response.headers) {
+                    response.headers = {};
+                }
+                _.assign(response.headers, responseBody[2] || {});
+                debug('response.headers after: %j', response.headers);
+
+                responseBody = responseBody[1];
+
+                response.rawHeaders = response.rawHeaders || [];
+                Object.keys(response.headers).forEach(function (key) {
+                    return response.rawHeaders.push(key, response.headers[key]);
+                });
+            }
+
+            if (interceptor.delayInMs) {
+                debug('delaying the response for', interceptor.delayInMs, 'milliseconds');
+                // Because setTimeout is called immediately in DelayedBody(), so we
+                // need count in the delayConnectionInMs.
+                responseBody = new DelayedBody(interceptor.getTotalDelay(), responseBody);
+            }
+
+            if (common.isStream(responseBody)) {
+                debug('response body is a stream');
+                responseBody.pause();
+                responseBody.on('data', function (d) {
+                    response.push(d);
+                });
+                responseBody.on('end', function () {
+                    response.push(null);
+                });
+                responseBody.on('error', function (err) {
+                    response.emit('error', err);
+                });
+            } else if (responseBody && !Buffer.isBuffer(responseBody)) {
+                if (typeof responseBody === 'string') {
+                    responseBody = new Buffer(responseBody);
+                } else {
+                    responseBody = JSON.stringify(responseBody);
+                    response.headers['content-type'] = 'application/json';
+                }
+            }
+
+            return responseBody;
+        }
+    }, {
+        key: 'respondWrapper',
+        value: function respondWrapper(interceptor, responseBody) {
+            var _this8 = this;
+
+            if (this._aborted) {
+                return;
+            }
+
+            if (interceptor.socketDelayInMs && interceptor.socketDelayInMs > 0) {
+                this._req.socket.applyDelay(interceptor.socketDelayInMs);
+            }
+
+            if (interceptor.delayConnectionInMs && interceptor.delayConnectionInMs > 0) {
+                setTimeout(function () {
+                    return _this8.respond(interceptor, responseBody);
+                }, interceptor.delayConnectionInMs);
+            } else {
+                this.respond(interceptor, responseBody);
+            }
+        }
+    }, {
+        key: 'respond',
+        value: function respond(interceptor, responseBody) {
+            if (this._aborted) {
+                return;
+            }
+
+            var response = this._response;
+            var req = this._req;
+
+
+            debug('emitting response');
+
+            if (typeof this._callback === 'function') {
+                debug('callback with response');
+                this._callback(this._response);
+            }
+
+            if (this._aborted) {
+                this.emitError(new Error('Request aborted'));
+            } else {
+                this._req.emit('response', response);
+            }
+
+            if (common.isStream(responseBody)) {
+                debug('resuming response stream');
+                responseBody.resume();
+
+                return;
+            }
+
+            var responseBuffers = this.getResponseBuffers(interceptor) || [];
+            if (typeof responseBody !== 'undefined') {
+                debug('adding body to buffer list');
+                responseBuffers.push(responseBody);
             }
 
             // Stream the response chunks one at a time.
             timers.setImmediate(function emitChunk() {
-              var chunk = responseBuffers.shift();
+                var chunk = responseBuffers.shift();
 
-              if (chunk) {
-                debug('emitting response chunk');
-                response.push(chunk);
-                timers.setImmediate(emitChunk);
-              }
-              else {
-                debug('ending response stream');
-                response.push(null);
-                interceptor.scope.emit('replied', req, interceptor);
-              }
+                if (chunk) {
+                    debug('emitting response chunk');
+                    response.push(chunk);
+                    timers.setImmediate(emitChunk);
+                } else {
+                    debug('ending response stream');
+                    response.push(null);
+                    interceptor.scope.emit('replied', req, interceptor);
+                }
             });
-          }
         }
-      }
-    }
-  };
+    }, {
+        key: 'emitError',
+        value: function emitError(error) {
+            var _this9 = this;
 
-  return req;
-}
+            process.nextTick(function () {
+                return _this9._req.emit('error', error);
+            });
+        }
+    }, {
+        key: 'request',
+        get: function get() {
+            return this._req;
+        }
+    }], [{
+        key: 'overrideRequest',
+        value: function overrideRequest(req, options, interceptors, removeInterceptor, callback) {
+            var overrider = new RequestOverrider(req, options, interceptors, removeInterceptor, callback);
+
+            return overrider.request;
+        }
+    }]);
+
+    return RequestOverrider;
+}();
 
 module.exports = RequestOverrider;
-
 }).call(this,require('_process'),require("buffer").Buffer)
 },{"./common":3,"./delayed_body":4,"./global_emitter":5,"./socket":13,"_process":26,"buffer":17,"debug":96,"events":21,"http":47,"lodash":103,"propagate":105,"stream":46,"timers":54}],12:[function(require,module,exports){
+'use strict';
+
 /* jshint strict:false */
 /**
  * @module nmock/scope
  */
-var globalIntercept = require('./intercept')
-  , common          = require('./common')
-  , assert          = require('assert')
-  , url             = require('url')
-  , _               = require('lodash')
-  , debug           = require('debug')('nmock.scope')
-  , stringify       = require('json-stringify-safe')
-  , EventEmitter    = require('events').EventEmitter
-  , extend          = require('util')._extend
-  , globalEmitter   = require('./global_emitter')
-  , util            = require('util')
-  , Interceptor     = require('./interceptor') ;
+var globalIntercept = require('./intercept'),
+    common = require('./common'),
+    assert = require('assert'),
+    url = require('url'),
+    _ = require('lodash'),
+    debug = require('debug')('nmock.scope'),
+    stringify = require('json-stringify-safe'),
+    EventEmitter = require('events').EventEmitter,
+    extend = require('util')._extend,
+    globalEmitter = require('./global_emitter'),
+    util = require('util'),
+    Interceptor = require('./interceptor');
 
 var fs;
 
 try {
   fs = require('fs');
-} catch(err) {
+} catch (err) {
   // do nothing, we're in the browser
 }
 
@@ -2739,7 +2886,7 @@ function Scope(basePath, options) {
 
   if (!(basePath instanceof RegExp)) {
     this.urlParts = url.parse(basePath);
-    this.port = this.urlParts.port || ((this.urlParts.protocol === 'http:') ? 80 : 443);
+    this.port = this.urlParts.port || (this.urlParts.protocol === 'http:' ? 80 : 443);
     this.basePathname = this.urlParts.pathname.replace(/\/$/, '');
     this.basePath = this.urlParts.protocol + '//' + this.urlParts.hostname + ':' + this.port;
   }
@@ -2748,15 +2895,11 @@ function Scope(basePath, options) {
 util.inherits(Scope, EventEmitter);
 
 Scope.prototype.add = function add(key, interceptor, scope) {
-  if (! this.keyedInterceptors.hasOwnProperty(key)) {
+  if (!this.keyedInterceptors.hasOwnProperty(key)) {
     this.keyedInterceptors[key] = [];
   }
   this.keyedInterceptors[key].push(interceptor);
-  globalIntercept(this.basePath,
-      interceptor,
-      this,
-      this.scopeOptions,
-      this.urlParts.hostname);
+  globalIntercept(this.basePath, interceptor, this, this.scopeOptions, this.urlParts.hostname);
 };
 
 Scope.prototype.remove = function remove(key, interceptor) {
@@ -2814,7 +2957,9 @@ Scope.prototype.pendingMocks = function pendingMocks() {
 Scope.prototype.isDone = function isDone() {
   var self = this;
   // if NMock is turned off, it always says it's done
-  if (! globalIntercept.isOn()) { return true; }
+  if (!globalIntercept.isOn()) {
+    return true;
+  }
 
   var keys = Object.keys(this.keyedInterceptors);
   if (keys.length === 0) {
@@ -2822,10 +2967,10 @@ Scope.prototype.isDone = function isDone() {
   } else {
     var doneHostCount = 0;
 
-    keys.forEach(function(key) {
+    keys.forEach(function (key) {
       var doneInterceptorCount = 0;
 
-      self.keyedInterceptors[key].forEach(function(interceptor) {
+      self.keyedInterceptors[key].forEach(function (interceptor) {
         var isRequireDoneDefined = !_.isUndefined(interceptor.options.requireDone);
         if (isRequireDoneDefined && interceptor.options.requireDone === false) {
           doneInterceptorCount += 1;
@@ -2834,11 +2979,11 @@ Scope.prototype.isDone = function isDone() {
         }
       });
 
-      if (doneInterceptorCount === self.keyedInterceptors[key].length ) {
+      if (doneInterceptorCount === self.keyedInterceptors[key].length) {
         doneHostCount += 1;
       }
     });
-    return (doneHostCount === keys.length);
+    return doneHostCount === keys.length;
   }
 };
 
@@ -2850,7 +2995,7 @@ Scope.prototype.buildFilter = function buildFilter() {
   var filteringArguments = arguments;
 
   if (arguments[0] instanceof RegExp) {
-    return function(candidate) {
+    return function (candidate) {
       if (candidate) {
         candidate = candidate.replace(filteringArguments[0], filteringArguments[1]);
       }
@@ -2912,16 +3057,13 @@ Scope.prototype.replyDate = function replyDate(d) {
   return this;
 };
 
-
-
-
 function cleanAll() {
   globalIntercept.removeAll();
   return module.exports;
 }
 
 function loadDefs(path) {
-  if (! fs) {
+  if (!fs) {
     throw new Error('No fs');
   }
 
@@ -2968,25 +3110,25 @@ function getScopeFromDefinition(nmockDef) {
 function tryJsonParse(string) {
   try {
     return JSON.parse(string);
-  } catch(err) {
+  } catch (err) {
     return string;
   }
 }
 
 function define(nmockDefs) {
 
-  var nmocks     = [];
+  var nmocks = [];
 
-  nmockDefs.forEach(function(nmockDef) {
+  nmockDefs.forEach(function (nmockDef) {
 
-    var nscope     = getScopeFromDefinition(nmockDef)
-      , npath      = nmockDef.path
-      , method     = nmockDef.method.toLowerCase() || "get"
-      , status     = getStatusFromDefinition(nmockDef)
-      , headers    = nmockDef.headers    || {}
-      , reqheaders = nmockDef.reqheaders || {}
-      , body       = nmockDef.body       || ''
-      , options    = nmockDef.options    || {};
+    var nscope = getScopeFromDefinition(nmockDef),
+        npath = nmockDef.path,
+        method = nmockDef.method.toLowerCase() || "get",
+        status = getStatusFromDefinition(nmockDef),
+        headers = nmockDef.headers || {},
+        reqheaders = nmockDef.reqheaders || {},
+        body = nmockDef.body || '',
+        options = nmockDef.options || {};
 
     //  We use request headers for both filtering (see below) and mocking.
     //  Here we are setting up mocked request headers but we don't want to
@@ -3004,8 +3146,8 @@ function define(nmockDefs) {
     }
 
     var nmock;
-    if (body==="*") {
-      nmock = startScope(nscope, options).filteringRequestBody(function() {
+    if (body === "*") {
+      nmock = startScope(nscope, options).filteringRequestBody(function () {
         return "*";
       })[method](npath, "*").reply(status, response, headers);
     } else {
@@ -3023,7 +3165,6 @@ function define(nmockDefs) {
     }
 
     nmocks.push(nmock);
-
   });
 
   return nmocks;
@@ -3041,83 +3182,100 @@ module.exports = extend(startScope, {
   load: load,
   loadDefs: loadDefs,
   define: define,
-  emitter: globalEmitter,
+  emitter: globalEmitter
 });
-
 },{"./common":3,"./global_emitter":5,"./intercept":6,"./interceptor":7,"assert":15,"debug":96,"events":21,"fs":14,"json-stringify-safe":102,"lodash":103,"url":55,"util":58}],13:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
-var EventEmitter = require('events').EventEmitter;
-var debug        = require('debug')('nmock.socket');
-var util = require('util');
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
-module.exports = Socket;
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
-function Socket(options) {
-  if (!(this instanceof Socket)) {
-    return new Socket(options);
-  }
+function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
 
-  EventEmitter.apply(this);
+function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
-  options = options || {};
+var _require = require('events');
 
-  if (options.proto === 'https') {
-    this.authorized = true;
-  }
+var EventEmitter = _require.EventEmitter;
 
-  this.writable = true;
-  this.readable = true;
-  this.destroyed = false;
+var debug = require('debug')('nmock.socket');
 
-  this.setNoDelay = noop;
-  this.setKeepAlive = noop;
-  this.resume = noop;
+var Socket = function (_EventEmitter) {
+    _inherits(Socket, _EventEmitter);
 
-  // totalDelay that has already been applied to the current
-  // request/connection, timeout error will be generated if
-  // it is timed-out.
-  this.totalDelayMs = 0;
-  // Maximum allowed delay. Null means unlimited.
-  this.timeoutMs = null;
-}
-util.inherits(Socket, EventEmitter);
+    function Socket(options) {
+        _classCallCheck(this, Socket);
 
-Socket.prototype.setTimeout = function setTimeout(timeoutMs, fn) {
-  this.timeoutMs = timeoutMs;
-  this.timeoutFunction = fn;
-};
+        var _this = _possibleConstructorReturn(this, Object.getPrototypeOf(Socket).call(this));
 
-Socket.prototype.applyDelay = function applyDelay(delayMs) {
-  this.totalDelayMs += delayMs;
+        EventEmitter.apply(_this);
 
-  if (this.timeoutMs && this.totalDelayMs > this.timeoutMs) {
-    debug('socket timeout');
-    if (this.timeoutFunction) {
-      this.timeoutFunction();
+        options = options || {};
+
+        if (options.proto === 'https') {
+            _this.authorized = true;
+        }
+
+        _this.writable = true;
+        _this.readable = true;
+        _this.destroyed = false;
+
+        _this.setNoDelay = noop;
+        _this.setKeepAlive = noop;
+        _this.resume = noop;
+
+        // totalDelay that has already been applied to the current
+        // request/connection, timeout error will be generated if
+        // it is timed-out.
+        _this.totalDelayMs = 0;
+        // Maximum allowed delay. Null means unlimited.
+        _this.timeoutMs = null;
+        return _this;
     }
-    else {
-      this.emit('timeout');
-    }
-  }
 
-};
+    _createClass(Socket, [{
+        key: 'setTimeout',
+        value: function setTimeout(timeoutMs, fn) {
+            this.timeoutMs = timeoutMs;
+            this.timeoutFunction = fn;
+        }
+    }, {
+        key: 'applyDelay',
+        value: function applyDelay(delayMs) {
+            this.totalDelayMs += delayMs;
 
-Socket.prototype.getPeerCertificate = function getPeerCertificate() {
-  return new Buffer((Math.random() * 10000 + Date.now()).toString()).toString('base64');
-};
+            if (this.timeoutMs && this.totalDelayMs > this.timeoutMs) {
+                debug('socket timeout');
+                if (this.timeoutFunction) {
+                    this.timeoutFunction();
+                } else {
+                    this.emit('timeout');
+                }
+            }
+        }
+    }, {
+        key: 'getPeerCertificate',
+        value: function getPeerCertificate() {
+            return new Buffer((Math.random() * 10000 + Date.now()).toString()).toString('base64');
+        }
+    }, {
+        key: 'destroy',
+        value: function destroy() {
+            this.destroyed = true;
+            this.readable = this.writable = false;
+        }
+    }]);
 
-Socket.prototype.destroy = function destroy() {
-  this.destroyed = true;
-  this.readable = this.writable = false;
-};
+    return Socket;
+}(EventEmitter);
 
 function noop() {}
 
-
+module.exports = Socket;
 }).call(this,require("buffer").Buffer)
-},{"buffer":17,"debug":96,"events":21,"util":58}],14:[function(require,module,exports){
+},{"buffer":17,"debug":96,"events":21}],14:[function(require,module,exports){
 
 },{}],15:[function(require,module,exports){
 // http://wiki.commonjs.org/wiki/Unit_Testing/1.0

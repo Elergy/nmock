@@ -8,12 +8,12 @@ var debug = require('debug')('nmock.common');
  *
  * @param  {Object} options - a parsed options object of the request
  */
-var normalizeRequestOptions = function normalizeRequestOptions(options) {
-  options.proto = options.proto || (options._https_ ? 'https' : 'http');
-  options.port = options.port || (options.proto === 'http' ? 80 : 443);
+var normalizeRequestOptions = function(options) {
+  options.proto = options.proto || (options._https_ ? 'https': 'http');
+  options.port = options.port || ((options.proto === 'http') ? 80 : 443);
   if (options.host) {
     debug('options.host:', options.host);
-    if (!options.hostname) {
+    if (! options.hostname) {
       if (options.host.split(':').length == 2) {
         options.hostname = options.host.split(':')[0];
       } else {
@@ -26,7 +26,7 @@ var normalizeRequestOptions = function normalizeRequestOptions(options) {
   debug('options.host in the end: %j', options.host);
 
   /// lowercase host names
-  ['hostname', 'host'].forEach(function (attr) {
+  ['hostname', 'host'].forEach(function(attr) {
     if (options[attr]) {
       options[attr] = options[attr].toLowerCase();
     }
@@ -41,22 +41,22 @@ var normalizeRequestOptions = function normalizeRequestOptions(options) {
  *
  * @param  {Object} buffer - a Buffer object
  */
-var isBinaryBuffer = function isBinaryBuffer(buffer) {
+var isBinaryBuffer = function(buffer) {
 
-  if (!Buffer.isBuffer(buffer)) {
+  if(!Buffer.isBuffer(buffer)) {
     return false;
   }
 
   //  Test if the buffer can be reconstructed verbatim from its utf8 encoding.
   var utfEncodedBuffer = buffer.toString('utf8');
   var reconstructedBuffer = new Buffer(utfEncodedBuffer, 'utf8');
-  var compareBuffers = function compareBuffers(lhs, rhs) {
-    if (lhs.length !== rhs.length) {
+  var compareBuffers = function(lhs, rhs) {
+    if(lhs.length !== rhs.length) {
       return false;
     }
 
-    for (var i = 0; i < lhs.length; ++i) {
-      if (lhs[i] !== rhs[i]) {
+    for(var i = 0; i < lhs.length; ++i) {
+      if(lhs[i] !== rhs[i]) {
         return false;
       }
     }
@@ -67,6 +67,7 @@ var isBinaryBuffer = function isBinaryBuffer(buffer) {
   //  If the buffers are *not* equal then this is a "binary buffer"
   //  meaning that it cannot be faitfully represented in utf8.
   return !compareBuffers(buffer, reconstructedBuffer);
+
 };
 
 /**
@@ -75,22 +76,23 @@ var isBinaryBuffer = function isBinaryBuffer(buffer) {
  *
  * @param  {Array} chunks - an array of Buffer objects or strings
  */
-var mergeChunks = function mergeChunks(chunks) {
+var mergeChunks = function(chunks) {
 
-  if (_.isEmpty(chunks)) {
+  if(_.isEmpty(chunks)) {
     return new Buffer(0);
   }
 
   //  We assume that all chunks are Buffer objects if the first is buffer object.
   var areBuffers = Buffer.isBuffer(_.first(chunks));
 
-  if (!areBuffers) {
+  if(!areBuffers) {
     //  When the chunks are not buffers we assume that they are strings.
     return chunks.join('');
   }
 
   //  Merge all the buffers into a single Buffer object.
   return Buffer.concat(chunks);
+
 };
 
 //  Array where all information about all the overridden requests are held.
@@ -107,21 +109,20 @@ var requestOverride = [];
  *   - options - the options of the issued request
  *   - callback - the callback of the issued request
  */
-var overrideRequests = function overrideRequests(newRequest) {
+var overrideRequests = function(newRequest) {
   debug('overriding requests');
 
-  ['http', 'https'].forEach(function (proto) {
+  ['http', 'https'].forEach(function(proto) {
     debug('- overriding request for', proto);
 
-    var moduleName = proto,
-        // 1 to 1 match of protocol and module is fortunate :)
-    module = {
-      http: require('http'),
-      https: require('https')
-    }[moduleName],
+    var moduleName = proto, // 1 to 1 match of protocol and module is fortunate :)
+        module = {
+          http: require('http'),
+          https: require('https')
+        }[moduleName],
         overriddenRequest = module.request;
 
-    if (requestOverride[moduleName]) {
+    if(requestOverride[moduleName]) {
       throw new Error('Module\'s request already overridden for ' + moduleName + ' protocol.');
     }
 
@@ -131,7 +132,7 @@ var overrideRequests = function overrideRequests(newRequest) {
       request: overriddenRequest
     };
 
-    module.request = function (options, callback) {
+    module.request = function(options, callback) {
       // debug('request options:', options);
       return newRequest(proto, overriddenRequest.bind(module), options, callback);
     };
@@ -144,15 +145,15 @@ var overrideRequests = function overrideRequests(newRequest) {
  * Restores `request` function of `http` and `https` modules to values they
  * held before they were overridden by us.
  */
-var restoreOverriddenRequests = function restoreOverriddenRequests() {
+var restoreOverriddenRequests = function() {
   debug('restoring requests');
 
   //  Restore any overridden requests.
-  _(requestOverride).keys().each(function (proto) {
+  _(requestOverride).keys().each(function(proto) {
     debug('- restoring request for', proto);
 
     var override = requestOverride[proto];
-    if (override) {
+    if(override) {
       override.module.request = override.request;
       debug('- restored request for', proto);
     }
@@ -163,14 +164,15 @@ var restoreOverriddenRequests = function restoreOverriddenRequests() {
 function stringifyRequest(options, body) {
   var method = options.method || 'GET';
 
-  if (body && typeof body !== 'string') {
+  if (body && typeof(body) !== 'string') {
     body = body.toString();
   }
 
   var port = options.port;
-  if (!port) port = options.proto == 'https' ? '443' : '80';
+  if (! port) port = (options.proto == 'https' ? '443' : '80');
 
-  if (options.proto == 'https' && port == '443' || options.proto == 'http' && port == '80') {
+  if (options.proto == 'https' && port == '443' ||
+      options.proto == 'http' && port == '80') {
     port = '';
   }
 
@@ -194,17 +196,17 @@ function isJSONContent(headers) {
   return contentType === 'application/json';
 }
 
-var headersFieldNamesToLowerCase = function headersFieldNamesToLowerCase(headers) {
-  if (!_.isObject(headers)) {
+var headersFieldNamesToLowerCase = function(headers) {
+  if(!_.isObject(headers)) {
     return headers;
   }
 
   //  For each key in the headers, delete its value and reinsert it with lower-case key.
   //  Keys represent headers field names.
   var lowerCaseHeaders = {};
-  _.forOwn(headers, function (fieldVal, fieldName) {
+  _.forOwn(headers, function(fieldVal, fieldName) {
     var lowerCaseFieldName = fieldName.toLowerCase();
-    if (!_.isUndefined(lowerCaseHeaders[lowerCaseFieldName])) {
+    if(!_.isUndefined(lowerCaseHeaders[lowerCaseFieldName])) {
       throw new Error('Failed to convert header keys to lower case due to field name conflict: ' + lowerCaseFieldName);
     }
     lowerCaseHeaders[lowerCaseFieldName] = fieldVal;
@@ -213,7 +215,7 @@ var headersFieldNamesToLowerCase = function headersFieldNamesToLowerCase(headers
   return lowerCaseHeaders;
 };
 
-var headersFieldsArrayToLowerCase = function headersFieldsArrayToLowerCase(headers) {
+var headersFieldsArrayToLowerCase = function (headers) {
   return _.uniq(_.map(headers, function (fieldName) {
     return fieldName.toLowerCase();
   }));
@@ -226,26 +228,27 @@ var headersFieldsArrayToLowerCase = function headersFieldsArrayToLowerCase(heade
  * @headers   {Object} headers - object of header field names and values
  * @fieldName {String} field name - string with the case-insensitive field name
  */
-var deleteHeadersField = function deleteHeadersField(headers, fieldNameToDelete) {
+var deleteHeadersField = function(headers, fieldNameToDelete) {
 
-  if (!_.isObject(headers) || !_.isString(fieldNameToDelete)) {
+  if(!_.isObject(headers) || !_.isString(fieldNameToDelete)) {
     return;
   }
 
   var lowerCaseFieldNameToDelete = fieldNameToDelete.toLowerCase();
 
   //  Search through the headers and delete all values whose field name matches the given field name.
-  _(headers).keys().each(function (fieldName) {
+  _(headers).keys().each(function(fieldName) {
     var lowerCaseFieldName = fieldName.toLowerCase();
-    if (lowerCaseFieldName === lowerCaseFieldNameToDelete) {
+    if(lowerCaseFieldName === lowerCaseFieldNameToDelete) {
       delete headers[fieldName];
       //  We don't stop here but continue in order to remove *all* matching field names
       //  (even though if seen regorously there shouldn't be any)
     }
   });
+
 };
 
-function percentDecode(str) {
+function percentDecode (str) {
   try {
     return decodeURIComponent(str.replace(/\+/g, ' '));
   } catch (e) {
@@ -254,7 +257,7 @@ function percentDecode(str) {
 }
 
 function percentEncode(str) {
-  return encodeURIComponent(str).replace(/[!'()*]/g, function (c) {
+  return encodeURIComponent(str).replace(/[!'()*]/g, function(c) {
     return '%' + c.charCodeAt(0).toString(16).toUpperCase();
   });
 }
@@ -279,11 +282,11 @@ function formatQueryValue(key, value, options) {
       value = '';
       break;
     case _.isString(value):
-      if (options.encodedQueryParams) {
+      if(options.encodedQueryParams) {
         value = percentDecode(value);
       }
       break;
-    case value instanceof RegExp:
+    case (value instanceof RegExp):
       break;
     case _.isArray(value):
       var tmpArray = new Array(value.length);
@@ -294,7 +297,7 @@ function formatQueryValue(key, value, options) {
       break;
     case _.isObject(value):
       var tmpObj = {};
-      _.forOwn(value, function (subVal, subKey) {
+      _.forOwn(value, function(subVal, subKey){
         var subPair = formatQueryValue(subKey, subVal, options);
         tmpObj[subPair[0]] = subPair[1];
       });
@@ -307,7 +310,10 @@ function formatQueryValue(key, value, options) {
 }
 
 function isStream(obj) {
-  return obj && typeof a !== 'string' && !Buffer.isBuffer(obj) && _.isFunction(obj.setEncoding);
+  return obj &&
+      (typeof a !== 'string') &&
+      (! Buffer.isBuffer(obj)) &&
+      _.isFunction(obj.setEncoding);
 }
 
 exports.normalizeRequestOptions = normalizeRequestOptions;
@@ -326,3 +332,4 @@ exports.percentDecode = percentDecode;
 exports.matchStringOrRegexp = matchStringOrRegexp;
 exports.formatQueryValue = formatQueryValue;
 exports.isStream = isStream;
+

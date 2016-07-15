@@ -52,12 +52,12 @@ test('emits no match when no match and mocked', function(t) {
 test('emits no match when netConnect is disabled', function(t) {
   nmock.disableNetConnect();
   nmock.emitter.on('no match', function(req) {
-    t.equal(req.hostname, 'jsonip.com')
+    t.equal(req.hostname, 'twitter.com')
     nmock.emitter.removeAllListeners('no match');
     nmock.enableNetConnect();
     t.end();
   });
-  http.get('http://jsonip.com').once('error', ignore);
+  http.get('http://twitter.com').once('error', ignore);
 });
 
 function ignore() {}

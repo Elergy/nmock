@@ -5,17 +5,18 @@
  */
 
 var RequestOverrider = require('./request_overrider'),
-    common = require('./common'),
-    url = require('url'),
-    inherits = require('util').inherits,
-    Interceptor = require('./interceptor'),
-    http = require('http'),
-    parse = require('url').parse,
-    _ = require('lodash'),
-    debug = require('debug')('nmock.intercept'),
-    timers = require('timers'),
-    EventEmitter = require('events').EventEmitter,
-    globalEmitter = require('./global_emitter');
+    common           = require('./common'),
+    url              = require('url'),
+    inherits         = require('util').inherits,
+    Interceptor      = require('./interceptor'),
+    http             = require('http'),
+    parse            = require('url').parse,
+    _                = require('lodash'),
+    debug            = require('debug')('nmock.intercept'),
+    timers           = require('timers'),
+    EventEmitter     = require('events').EventEmitter,
+    globalEmitter    = require('./global_emitter');
+
 
 /**
  * @name NetConnectNotAllowedError
@@ -30,7 +31,7 @@ var RequestOverrider = require('./request_overrider'),
 function NetConnectNotAllowedError(host, path) {
   Error.call(this);
 
-  this.name = 'NetConnectNotAllowedError';
+  this.name    = 'NetConnectNotAllowedError';
   this.message = 'NMock: Not allow net connect for "' + host + path + '"';
 
   Error.captureStackTrace(this, this.constructor);
@@ -93,7 +94,7 @@ function isOff() {
 }
 
 function add(key, interceptor, scope, scopeOptions, host) {
-  if (!allInterceptors.hasOwnProperty(key)) {
+  if (! allInterceptors.hasOwnProperty(key)) {
     allInterceptors[key] = { key: key, scopes: [] };
   }
   interceptor.__nmock_scope = scope;
@@ -117,7 +118,7 @@ function remove(interceptor) {
   var interceptors = allInterceptors[basePath] && allInterceptors[basePath].scopes || [];
 
   interceptors.some(function (thisInterceptor, i) {
-    return thisInterceptor === interceptor ? interceptors.splice(i, 1) : false;
+    return (thisInterceptor === interceptor) ? interceptors.splice(i, 1) : false;
   });
 }
 
@@ -126,7 +127,8 @@ function removeAll() {
 }
 
 function interceptorsFor(options) {
-  var basePath, matchingInterceptor;
+  var basePath,
+      matchingInterceptor;
 
   common.normalizeRequestOptions(options);
 
@@ -137,13 +139,13 @@ function interceptorsFor(options) {
   debug('filtering interceptors for basepath', basePath);
 
   //  First try to use filteringScope if any of the interceptors has it defined.
-  _.each(allInterceptors, function (interceptor, k) {
-    _.each(interceptor.scopes, function (scope) {
+  _.each(allInterceptors, function(interceptor, k) {
+    _.each(interceptor.scopes, function(scope) {
       var filteringScope = scope.__nmock_scopeOptions.filteringScope;
 
       //  If scope filtering function is defined and returns a truthy value
       //  then we have to treat this as a match.
-      if (filteringScope && filteringScope(basePath)) {
+      if(filteringScope && filteringScope(basePath)) {
         debug('found matching scope interceptor');
 
         //  Keep the filtered scope (its key) to signal the rest of the module
@@ -206,7 +208,7 @@ var originalClientRequest;
 
 function ErroringClientRequest(error) {
   if (http.OutgoingMessage) http.OutgoingMessage.call(this);
-  process.nextTick(function () {
+  process.nextTick(function() {
     this.emit('error', error);
   }.bind(this));
 }
@@ -218,7 +220,7 @@ if (http.ClientRequest) {
 function overrideClientRequest() {
   debug('Overriding ClientRequest');
 
-  if (originalClientRequest) {
+  if(originalClientRequest) {
     throw new Error('NMock already overrode http.ClientRequest');
   }
 
@@ -236,7 +238,7 @@ function overrideClientRequest() {
 
       //  Use filtered interceptors to intercept requests.
       var overrider = RequestOverrider.overrideRequest(this, options, interceptors, remove, cb);
-      for (var propName in overrider) {
+      for(var propName in overrider) {
         if (overrider.hasOwnProperty(propName)) {
           this[propName] = overrider[propName];
         }
@@ -245,7 +247,7 @@ function overrideClientRequest() {
       debug('falling back to original ClientRequest');
 
       //  Fallback to original ClientRequest if NMock is off or the net connection is enabled.
-      if (isOff() || isEnabledForNetConnect(options)) {
+      if(isOff() || isEnabledForNetConnect(options)) {
         originalClientRequest.apply(this, arguments);
       } else {
         timers.setImmediate(function () {
@@ -273,7 +275,7 @@ function restoreOverriddenClientRequest() {
   debug('restoring overriden ClientRequest');
 
   //  Restore the ClientRequest we have overridden.
-  if (!originalClientRequest) {
+  if(!originalClientRequest) {
     debug('- ClientRequest was not overridden');
   } else {
     http.ClientRequest = originalClientRequest;
@@ -288,18 +290,19 @@ function isActive() {
   //  If ClientRequest has been overwritten by NMock then originalClientRequest is not undefined.
   //  This means that NMock has been activated.
   return !_.isUndefined(originalClientRequest);
+
 }
 
 function isDone() {
-  return _.every(allInterceptors, function (interceptors) {
-    return _.every(interceptors.scopes, function (interceptor) {
+  return _.every(allInterceptors, function(interceptors) {
+    return _.every(interceptors.scopes, function(interceptor) {
       return interceptor.__nmock_scope.isDone();
     });
   });
 }
 
 function pendingMocks() {
-  return _.reduce(allInterceptors, function (result, interceptors) {
+  return _.reduce(allInterceptors, function(result, interceptors) {
     for (var interceptor in interceptors.scopes) {
       result = result.concat(interceptors.scopes[interceptor].__nmock_scope.pendingMocks());
     }
@@ -310,7 +313,7 @@ function pendingMocks() {
 
 function activate() {
 
-  if (originalClientRequest) {
+  if(originalClientRequest) {
     throw new Error('NMock already active');
   }
 
@@ -318,30 +321,31 @@ function activate() {
 
   // ----- Overriding http.request and https.request:
 
-  common.overrideRequests(function (proto, overriddenRequest, options, callback) {
+  common.overrideRequests(function(proto, overriddenRequest, options, callback) {
     //  NOTE: overriddenRequest is already bound to its module.
-    var req, res;
+    var req,
+        res;
 
     if (typeof options === 'string') {
       options = parse(options);
     }
     options.proto = proto;
 
-    var interceptors = interceptorsFor(options);
+    var interceptors = interceptorsFor(options)
 
     if (isOn() && interceptors) {
       var matches = false,
           allowUnmocked = false;
 
-      matches = !!_.find(interceptors, function (interceptor) {
+      matches = !! _.find(interceptors, function(interceptor) {
         return interceptor.matchIndependentOfBody(options);
       });
 
-      allowUnmocked = !!_.find(interceptors, function (interceptor) {
+      allowUnmocked = !! _.find(interceptors, function(interceptor) {
         return interceptor.options.allowUnmocked;
       });
 
-      if (!matches && allowUnmocked) {
+      if (! matches && allowUnmocked) {
         if (proto === 'https') {
           var ClientRequest = http.ClientRequest;
           http.ClientRequest = originalClientRequest;
@@ -373,6 +377,7 @@ function activate() {
       }
     }
   });
+
 }
 
 activate();

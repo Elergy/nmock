@@ -1,19 +1,19 @@
 'use strict';
 
-var mixin = require('./mixin'),
-    matchBody = require('./match_body'),
-    common = require('./common'),
-    _ = require('lodash'),
-    debug = require('debug')('nmock.scope'),
-    stringify = require('json-stringify-safe'),
-    util = require('util'),
-    qs = require('qs');
+var mixin           = require('./mixin')
+    , matchBody       = require('./match_body')
+    , common          = require('./common')
+    , _               = require('lodash')
+    , debug           = require('debug')('nmock.scope')
+    , stringify       = require('json-stringify-safe')
+    , util            = require('util')
+    , qs              = require('qs');
 
 var fs;
 
 try {
     fs = require('fs');
-} catch (err) {
+} catch(err) {
     // do nothing, we're in the browser
 }
 
@@ -26,7 +26,7 @@ function Interceptor(scope, uri, method, requestBody, interceptorOptions) {
     this.uri = uri;
     this._key = this.method + ' ' + scope.basePath + scope.basePathname + (typeof uri === 'string' ? '' : '/') + uri;
     this.basePath = this.scope.basePath;
-    this.path = typeof uri === 'string' ? scope.basePathname + uri : uri;
+    this.path = (typeof uri === 'string') ? scope.basePathname + uri : uri;
 
     this.baseUri = this.method + ' ' + scope.basePath + scope.basePathname;
     this.options = interceptorOptions || {};
@@ -34,8 +34,9 @@ function Interceptor(scope, uri, method, requestBody, interceptorOptions) {
     this._requestBody = requestBody;
 
     //  We use lower-case header field names throughout nmock.
-    this.reqheaders = common.headersFieldNamesToLowerCase(scope.scopeOptions && scope.scopeOptions.reqheaders || {});
-    this.badheaders = common.headersFieldsArrayToLowerCase(scope.scopeOptions && scope.scopeOptions.badheaders || []);
+    this.reqheaders = common.headersFieldNamesToLowerCase((scope.scopeOptions && scope.scopeOptions.reqheaders) || {});
+    this.badheaders = common.headersFieldsArrayToLowerCase((scope.scopeOptions && scope.scopeOptions.badheaders) || []);
+
 
     this.delayInMs = 0;
     this.delayConnectionInMs = 0;
@@ -91,7 +92,10 @@ Interceptor.prototype.reply = function reply(statusCode, body, headers) {
     //  If the content is not encoded we may need to transform the response body.
     //  Otherwise we leave it as it is.
     if (!common.isContentEncoded(headers)) {
-        if (body && typeof body !== 'string' && typeof body !== 'function' && !Buffer.isBuffer(body) && !common.isStream(body)) {
+        if (body && typeof(body) !== 'string' &&
+            typeof(body) !== 'function' &&
+            !Buffer.isBuffer(body) &&
+            !common.isStream(body)) {
             try {
                 body = stringify(body);
                 if (!this.headers) {
@@ -103,7 +107,7 @@ Interceptor.prototype.reply = function reply(statusCode, body, headers) {
                 if (this.scope.contentLen) {
                     this.headers['content-length'] = body.length;
                 }
-            } catch (err) {
+            } catch(err) {
                 throw new Error('Error encoding response body into JSON');
             }
         }
@@ -116,7 +120,7 @@ Interceptor.prototype.reply = function reply(statusCode, body, headers) {
 };
 
 Interceptor.prototype.replyWithFile = function replyWithFile(statusCode, filePath, headers) {
-    if (!fs) {
+    if (! fs) {
         throw new Error('No fs');
     }
     var readStream = fs.createReadStream(filePath);
@@ -126,7 +130,7 @@ Interceptor.prototype.replyWithFile = function replyWithFile(statusCode, filePat
 };
 
 Interceptor.prototype.replyWithFile = function replyWithFile(statusCode, filePath, headers) {
-    if (!fs) {
+    if (! fs) {
         throw new Error('No fs');
     }
     var readStream = fs.createReadStream(filePath);
@@ -135,24 +139,28 @@ Interceptor.prototype.replyWithFile = function replyWithFile(statusCode, filePat
     return this.reply(statusCode, readStream, headers);
 };
 
+
 // Also match request headers
 // https://github.com/pgte/nmock/issues/163
 Interceptor.prototype.reqheaderMatches = function reqheaderMatches(options, key) {
     //  We don't try to match request headers if these weren't even specified in the request.
-    if (!options.headers) {
+    if (! options.headers) {
         return true;
     }
 
     var reqHeader = this.reqheaders[key];
     var header = options.headers[key];
-    if (header && typeof header !== 'string' && header.toString) {
+    if (header && (typeof header !== 'string') && header.toString) {
         header = header.toString();
     }
 
     //  We skip 'host' header comparison unless it's available in both mock and actual request.
     //  This because 'host' may get inserted by nmock itself and then get recorder.
     //  NOTE: We use lower-case header field names throughout nmock.
-    if (key === 'host' && (_.isUndefined(header) || _.isUndefined(reqHeader))) {
+    if (key === 'host' &&
+        (_.isUndefined(header) ||
+        _.isUndefined(reqHeader)))
+    {
         return true;
     }
 
@@ -177,35 +185,38 @@ Interceptor.prototype.match = function match(options, body, hostNameOnly) {
         return options.hostname === this.scope.urlParts.hostname;
     }
 
-    var method = (options.method || 'GET').toUpperCase(),
-        path = options.path,
-        matches,
-        matchKey,
-        proto = options.proto;
+    var method = (options.method || 'GET').toUpperCase()
+        , path = options.path
+        , matches
+        , matchKey
+        , proto = options.proto;
 
     if (this.scope.transformPathFunction) {
         path = this.scope.transformPathFunction(path);
     }
-    if (typeof body !== 'string') {
+    if (typeof(body) !== 'string') {
         body = body.toString();
     }
     if (this.scope.transformRequestBodyFunction) {
         body = this.scope.transformRequestBodyFunction(body, this._requestBody);
     }
 
-    var checkHeaders = function checkHeaders(header) {
+    var checkHeaders = function(header) {
         if (_.isFunction(header.value)) {
             return header.value(options.getHeader(header.name));
         }
         return common.matchStringOrRegexp(options.getHeader(header.name), header.value);
     };
 
-    if (!this.scope.matchHeaders.every(checkHeaders) || !this.interceptorMatchHeaders.every(checkHeaders)) {
+    if (!this.scope.matchHeaders.every(checkHeaders) ||
+        !this.interceptorMatchHeaders.every(checkHeaders)) {
         this.scope.logger('headers don\'t match');
         return false;
     }
 
-    var reqHeadersMatch = !this.reqheaders || Object.keys(this.reqheaders).every(this.reqheaderMatches.bind(this, options));
+    var reqHeadersMatch =
+        ! this.reqheaders ||
+        Object.keys(this.reqheaders).every(this.reqheaderMatches.bind(this, options));
 
     if (!reqHeadersMatch) {
         return false;
@@ -215,7 +226,9 @@ Interceptor.prototype.match = function match(options, body, hostNameOnly) {
         return _.has(options.headers, header);
     }
 
-    var reqContainsBadHeaders = this.badheaders && _.some(this.badheaders, reqheaderContains);
+    var reqContainsBadHeaders =
+        this.badheaders &&
+        _.some(this.badheaders, reqheaderContains);
 
     if (reqContainsBadHeaders) {
         return false;
@@ -229,7 +242,11 @@ Interceptor.prototype.match = function match(options, body, hostNameOnly) {
         matchKey = this.__nmock_filteredScope;
     } else {
         matchKey = proto + '://' + options.host;
-        if (options.port && options.host.indexOf(':') < 0 && (options.port !== 80 || options.proto !== 'http') && (options.port !== 443 || options.proto !== 'https')) {
+        if (
+            options.port && options.host.indexOf(':') < 0 &&
+            (options.port !== 80 || options.proto !== 'http') &&
+            (options.port !== 443 || options.proto !== 'https')
+        ) {
             matchKey += ":" + options.port;
         }
     }
@@ -247,9 +264,9 @@ Interceptor.prototype.match = function match(options, body, hostNameOnly) {
         // Only check for query string matches if this.queries is an object
         if (_.isObject(this.queries)) {
 
-            if (_.isFunction(this.queries)) {
+            if(_.isFunction(this.queries)){
                 matchQueries = this.queries(queries);
-            } else {
+            }else {
                 // Make sure that you have an equal number of keys. We are
                 // looping through the passed query params and not the expected values
                 // if the user passes fewer query params than expected but all values
@@ -267,16 +284,16 @@ Interceptor.prototype.match = function match(options, body, hostNameOnly) {
                         var expVal = self.queries[key];
                         var isMatch = true;
                         if (val === undefined || expVal === undefined) {
-                            isMatch = false;
-                        } else if (expVal instanceof RegExp) {
-                            isMatch = common.matchStringOrRegexp(val, expVal);
-                        } else if (_.isArray(expVal) || _.isObject(expVal)) {
-                            isMatch = _.isEqual(val, expVal);
-                        } else {
-                            isMatch = common.matchStringOrRegexp(val, expVal);
-                        }
-                        matchQueries = matchQueries && !!isMatch;
-                    });
+                        isMatch = false;
+                    } else if (expVal instanceof RegExp) {
+                      isMatch = common.matchStringOrRegexp(val, expVal);
+                    } else if (_.isArray(expVal) || _.isObject(expVal)) {
+                      isMatch = _.isEqual(val, expVal);
+                    } else {
+                      isMatch = common.matchStringOrRegexp(val, expVal);
+                    }
+                matchQueries = matchQueries && !!isMatch;
+                });
                 }
                 debug('matchQueries: %j', matchQueries);
             }
@@ -287,20 +304,26 @@ Interceptor.prototype.match = function match(options, body, hostNameOnly) {
     }
 
     if (typeof this.uri === 'function') {
-        matches = matchQueries && method.toUpperCase() + ' ' + proto + '://' + options.host === this.baseUri && this.uri.call(this, path);
+        matches = matchQueries &&
+        method.toUpperCase() + ' ' + proto + '://' + options.host === this.baseUri &&
+        this.uri.call(this, path);
     } else {
-        matches = method === this.method && common.matchStringOrRegexp(matchKey, this.basePath) && common.matchStringOrRegexp(path, this.path) && matchQueries;
+        matches = method === this.method &&
+        common.matchStringOrRegexp(matchKey, this.basePath) &&
+        common.matchStringOrRegexp(path, this.path) &&
+        matchQueries;
     }
 
     // special logger for query()
     if (queryIndex !== -1) {
-        this.scope.logger('matching ' + matchKey + '?' + queryString + ' to ' + this._key + ' with query(' + stringify(this.queries) + '): ' + matches);
+        this.scope.logger('matching ' + matchKey + '?' + queryString + ' to ' + this._key +
+        ' with query(' + stringify(this.queries) + '): ' + matches);
     } else {
         this.scope.logger('matching ' + matchKey + ' to ' + this._key + ': ' + matches);
     }
 
     if (matches) {
-        matches = matchBody.call(options, this._requestBody, body);
+        matches = (matchBody.call(options, this._requestBody, body));
         if (!matches) {
             this.scope.logger('bodies don\'t match: \n', this._requestBody, '\n', body);
         }
@@ -310,19 +333,20 @@ Interceptor.prototype.match = function match(options, body, hostNameOnly) {
 };
 
 Interceptor.prototype.matchIndependentOfBody = function matchIndependentOfBody(options) {
-    var method = (options.method || 'GET').toUpperCase(),
-        path = options.path,
-        proto = options.proto;
+    var method = (options.method || 'GET').toUpperCase()
+        , path = options.path
+        , proto = options.proto;
 
     if (this.scope.transformPathFunction) {
         path = this.scope.transformPathFunction(path);
     }
 
-    var checkHeaders = function checkHeaders(header) {
+    var checkHeaders = function(header) {
         return options.getHeader && common.matchStringOrRegexp(options.getHeader(header.name), header.value);
     };
 
-    if (!this.scope.matchHeaders.every(checkHeaders) || !this.interceptorMatchHeaders.every(checkHeaders)) {
+    if (!this.scope.matchHeaders.every(checkHeaders) ||
+        !this.interceptorMatchHeaders.every(checkHeaders)) {
         return false;
     }
 
@@ -378,7 +402,7 @@ Interceptor.prototype.query = function query(queries) {
         this.queries = queries;
     }
 
-    if (_.isFunction(queries)) {
+    if(_.isFunction(queries)){
         this.queries = queries;
         return this;
     }
@@ -469,7 +493,8 @@ Interceptor.prototype.delay = function delay(opts) {
         throw new Error("Unexpected input opts" + opts);
     }
 
-    return this.delayConnection(headDelay).delayBody(bodyDelay);
+    return this.delayConnection(headDelay)
+        .delayBody(bodyDelay);
 };
 
 /**
@@ -494,7 +519,7 @@ Interceptor.prototype.delayConnection = function delayConnection(ms) {
     return this;
 };
 
-Interceptor.prototype.getTotalDelay = function getTotalDelay() {
+Interceptor.prototype.getTotalDelay =function getTotalDelay() {
     return this.delayInMs + this.delayConnectionInMs;
 };
 

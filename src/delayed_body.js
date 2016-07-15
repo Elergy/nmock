@@ -8,18 +8,17 @@
  * @param  {Integer} ms - The delay in milliseconds
  * @constructor
  */
-
 module.exports = DelayedBody;
 
 var Transform = require('stream').Transform;
 var EventEmitter = require('events').EventEmitter;
-var noop = function noop() {};
+var noop = function () {};
 var util = require('util');
 var common = require('./common');
 
 if (!Transform) {
   // for barebones compatibility for node < 0.10
-  var FakeTransformStream = function FakeTransformStream() {
+  var FakeTransformStream = function () {
     EventEmitter.call(this);
   };
   util.inherits(FakeTransformStream, EventEmitter);
