@@ -1,9 +1,9 @@
 var assert = require('assert');
 var http = require('http');
-var nock = require('../../');
+var nmock = require('../../');
 
-nock.disableNetConnect();
-nock('http://browserifyland.com').get('/beep').reply(200, 'boop');
+nmock.disableNetConnect();
+nmock('http://browserifyland.com').get('/beep').reply(200, 'boop');
 
 http.get('http://browserifyland.com/beep', function(res) {
   res.setEncoding('utf8');

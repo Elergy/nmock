@@ -1,11 +1,11 @@
 'use strict';
 
-var nock    = require('../.')
+var nmock    = require('../.')
   , tap     = require('tap')
   , http    = require('http')
   , https   = require('https')
   , _       = require('lodash')
-  , debug   = require('debug')('nock.test_recorder')
+  , debug   = require('debug')('nmock.test_recorder')
   , mikealRequest = require('request')
   , superagent = require('superagent')
   , rest = require('restler');
@@ -17,44 +17,44 @@ tap.test("setup", function(t) {
   t.end();
 });
 
-tap.test('recording turns off nock interception (backward compatibility behavior)', function(t) {
+tap.test('recording turns off nmock interception (backward compatibility behavior)', function(t) {
 
   //  We ensure that there are no overrides.
-  nock.restore();
-  t.false(nock.isActive());
-  //  We active the nock overriding - as it's done by merely loading nock.
-  nock.activate();
-  t.true(nock.isActive());
+  nmock.restore();
+  t.false(nmock.isActive());
+  //  We active the nmock overriding - as it's done by merely loading nmock.
+  nmock.activate();
+  t.true(nmock.isActive());
   //  We start recording.
-  nock.recorder.rec();
+  nmock.recorder.rec();
   //  Nothing happens (nothing has been thrown) - which was the original behavior -
   //  and mocking has been deactivated.
-  t.false(nock.isActive());
+  t.false(nmock.isActive());
 
   t.end();
 
 });
 
 tap.test('records', function(t) {
-  nock.restore();
-  nock.recorder.clear();
-  t.equal(nock.recorder.play().length, 0);
+  nmock.restore();
+  nmock.recorder.clear();
+  t.equal(nmock.recorder.play().length, 0);
   var options = { method: 'POST'
                 , host:'google.com'
                 , port:80
                 , path:'/' }
   ;
 
-  nock.recorder.rec(true);
+  nmock.recorder.rec(true);
   var req = http.request(options, function(res) {
     res.resume();
     var ret;
     res.once('end', function() {
-      nock.restore();
-      ret = nock.recorder.play();
+      nmock.restore();
+      ret = nmock.recorder.play();
       t.equal(ret.length, 1);
       t.type(ret[0], 'string');
-      t.equal(ret[0].indexOf("\nnock('http://google.com:80', {\"encodedQueryParams\":true})\n  .post('/', \"ABCDEF\")\n  .reply("), 0);
+      t.equal(ret[0].indexOf("\nnmock('http://google.com:80', {\"encodedQueryParams\":true})\n  .post('/', \"ABCDEF\")\n  .reply("), 0);
       t.end();
     });
   });
@@ -62,23 +62,23 @@ tap.test('records', function(t) {
 });
 
 tap.test('records objects', function(t) {
-  nock.restore();
-  nock.recorder.clear();
-  t.equal(nock.recorder.play().length, 0);
+  nmock.restore();
+  nmock.recorder.clear();
+  t.equal(nmock.recorder.play().length, 0);
   var options = { method: 'POST'
                 , host:'google.com'
                 , path:'/' }
   ;
 
-  nock.recorder.rec({
+  nmock.recorder.rec({
     dont_print: true,
     output_objects: true
   });
   var req = http.request(options, function(res) {
     res.resume();
     res.once('end', function() {
-      nock.restore();
-      var ret = nock.recorder.play();
+      nmock.restore();
+      var ret = nmock.recorder.play();
       t.equal(ret.length, 1);
       ret = ret[0];
       t.type(ret, 'object');
@@ -94,11 +94,11 @@ tap.test('records objects', function(t) {
 
 tap.test('records and replays objects correctly', function(t) {
 
-  nock.restore();
-  nock.recorder.clear();
-  t.equal(nock.recorder.play().length, 0);
+  nmock.restore();
+  nmock.recorder.clear();
+  t.equal(nmock.recorder.play().length, 0);
 
-  nock.recorder.rec({
+  nmock.recorder.rec({
     dont_print: true,
     output_objects: true
   });
@@ -115,21 +115,21 @@ tap.test('records and replays objects correctly', function(t) {
     t.ok(resp);
     t.ok(resp.headers);
 
-    nock.restore();
-    var nockDefs = nock.recorder.play();
-    nock.recorder.clear();
-    nock.activate();
+    nmock.restore();
+    var nmockDefs = nmock.recorder.play();
+    nmock.recorder.clear();
+    nmock.activate();
 
-    t.equal(nockDefs.length, 2);
-    var nocks = nock.define(nockDefs);
+    t.equal(nmockDefs.length, 2);
+    var nmocks = nmock.define(nmockDefs);
 
     makeRequest(function(mockedErr, mockedResp) {
 
       t.equal(err, mockedErr);
       t.deepEqual(mockedResp.body, resp.body);
 
-      _.each(nocks, function(nock) {
-        nock.done();
+      _.each(nmocks, function(nmock) {
+        nmock.done();
       });
 
       t.end();
@@ -141,11 +141,11 @@ tap.test('records and replays objects correctly', function(t) {
 
 tap.test('records and replays correctly with filteringRequestBody', function(t) {
 
-  nock.restore();
-  nock.recorder.clear();
-  t.equal(nock.recorder.play().length, 0);
+  nmock.restore();
+  nmock.recorder.clear();
+  t.equal(nmock.recorder.play().length, 0);
 
-  nock.recorder.rec({
+  nmock.recorder.rec({
     dont_print: true,
     output_objects: true
   });
@@ -162,28 +162,28 @@ tap.test('records and replays correctly with filteringRequestBody', function(t) 
     t.ok(resp);
     t.ok(resp.headers);
 
-    nock.restore();
-    var nockDefs = nock.recorder.play();
-    nock.recorder.clear();
-    nock.activate();
+    nmock.restore();
+    var nmockDefs = nmock.recorder.play();
+    nmock.recorder.clear();
+    nmock.activate();
 
-    t.equal(nockDefs.length, 2);
-    var nockDef = _.first(nockDefs);
+    t.equal(nmockDefs.length, 2);
+    var nmockDef = _.first(nmockDefs);
     var filteringRequestBodyCounter = 0;
-    nockDef.filteringRequestBody = function(body, aRecodedBody) {
+    nmockDef.filteringRequestBody = function(body, aRecodedBody) {
       ++filteringRequestBodyCounter;
       t.strictEqual(body, aRecodedBody);
       return body;
     };
-    var nocks = nock.define(nockDefs);
+    var nmocks = nmock.define(nmockDefs);
 
     makeRequest(function(mockedErr, mockedResp) {
 
       t.equal(err, mockedErr);
       t.deepEqual(mockedResp.body, resp.body);
 
-      _.each(nocks, function(nock) {
-        nock.done();
+      _.each(nmocks, function(nmock) {
+        nmock.done();
       });
 
       t.strictEqual(filteringRequestBodyCounter, 1);
@@ -199,10 +199,10 @@ tap.test('checks if callback is specified', function(t) {
     host: 'www.google.com', method: 'GET', path: '/', port: 80
   };
 
-  nock.restore();
-  nock.recorder.clear();
-  t.equal(nock.recorder.play().length, 0);
-  nock.recorder.rec(true);
+  nmock.restore();
+  nmock.recorder.clear();
+  t.equal(nmock.recorder.play().length, 0);
+  nmock.recorder.rec(true);
 
   http.request(options).end();
   t.end();
@@ -217,17 +217,17 @@ tap.test('when request body is json, it goes unstringified', function(t) {
     port: 80
   };
 
-  nock.restore();
-  nock.recorder.clear();
-  nock.recorder.rec(true);
+  nmock.restore();
+  nmock.recorder.clear();
+  nmock.recorder.rec(true);
 
   var request = http.request(options, function(res) {
     res.resume();
     res.once('end', function() {
-      var ret = nock.recorder.play();
+      var ret = nmock.recorder.play();
       t.ok(ret.length >= 1);
       ret = ret[1] || ret[0];
-      t.equal(ret.indexOf("\nnock('http://www.google.com:80', {\"encodedQueryParams\":true})\n  .post('/', {\"a\":1,\"b\":true})\n  .reply("), 0);
+      t.equal(ret.indexOf("\nnmock('http://www.google.com:80', {\"encodedQueryParams\":true})\n  .post('/', {\"a\":1,\"b\":true})\n  .reply("), 0);
       t.end();
     });
   });
@@ -244,9 +244,9 @@ tap.test('when request body is json, it goes unstringified in objects', function
     port: 80
   };
 
-  nock.restore();
-  nock.recorder.clear();
-  nock.recorder.rec({
+  nmock.restore();
+  nmock.recorder.clear();
+  nmock.recorder.rec({
     dont_print: true,
     output_objects: true
   });
@@ -254,7 +254,7 @@ tap.test('when request body is json, it goes unstringified in objects', function
   var request = http.request(options, function(res) {
     res.resume();
     res.once('end', function() {
-      var ret = nock.recorder.play();
+      var ret = nmock.recorder.play();
       t.ok(ret.length >= 1);
       ret = ret[1] || ret[0];
       t.type(ret, 'object');
@@ -271,9 +271,9 @@ tap.test('when request body is json, it goes unstringified in objects', function
 });
 
 tap.test('records nonstandard ports', function(t) {
-  nock.restore();
-  nock.recorder.clear();
-  t.equal(nock.recorder.play().length, 0);
+  nmock.restore();
+  nmock.recorder.clear();
+  t.equal(nmock.recorder.play().length, 0);
 
   var REQUEST_BODY = 'ABCDEF';
   var RESPONSE_BODY = '012345';
@@ -296,13 +296,13 @@ tap.test('records nonstandard ports', function(t) {
       output_objects: true
     };
 
-    nock.recorder.rec(rec_options);
+    nmock.recorder.rec(rec_options);
 
     var req = http.request(options, function(res) {
       res.resume();
       res.once('end', function() {
-        nock.restore();
-        var ret = nock.recorder.play();
+        nmock.restore();
+        var ret = nmock.recorder.play();
         t.equal(ret.length, 1);
         ret = ret[0];
         t.type(ret, 'object');
@@ -324,33 +324,33 @@ tap.test('records nonstandard ports', function(t) {
 });
 
 tap.test('rec() throws when reenvoked with already recorder requests', function(t) {
-  nock.restore();
-  nock.recorder.clear();
-  t.equal(nock.recorder.play().length, 0);
+  nmock.restore();
+  nmock.recorder.clear();
+  t.equal(nmock.recorder.play().length, 0);
 
-  nock.recorder.rec();
+  nmock.recorder.rec();
   try {
-    nock.recorder.rec();
+    nmock.recorder.rec();
     //  This line should never be reached.
     t.ok(false);
     t.end();
   } catch(e) {
-    t.equal(e.toString(), 'Error: Nock recording already in progress');
+    t.equal(e.toString(), 'Error: NMock recording already in progress');
     t.end();
   }
 });
 
 tap.test('records https correctly', function(t) {
-  nock.restore();
-  nock.recorder.clear();
-  t.equal(nock.recorder.play().length, 0);
+  nmock.restore();
+  nmock.recorder.clear();
+  t.equal(nmock.recorder.play().length, 0);
 
   var options = { method: 'POST'
                 , host:'google.com'
                 , path:'/' }
   ;
 
-  nock.recorder.rec({
+  nmock.recorder.rec({
     dont_print: true,
     output_objects: true
   });
@@ -359,8 +359,8 @@ tap.test('records https correctly', function(t) {
     res.resume();
     var ret;
     res.once('end', function() {
-      nock.restore();
-      ret = nock.recorder.play();
+      nmock.restore();
+      ret = nmock.recorder.play();
       t.equal(ret.length, 1);
       ret = ret[0];
       t.type(ret, 'object');
@@ -375,11 +375,11 @@ tap.test('records https correctly', function(t) {
 });
 
 tap.test('records request headers correctly', function(t) {
-  nock.restore();
-  nock.recorder.clear();
-  t.equal(nock.recorder.play().length, 0);
+  nmock.restore();
+  nmock.recorder.clear();
+  t.equal(nmock.recorder.play().length, 0);
 
-  nock.recorder.rec({
+  nmock.recorder.rec({
     dont_print: true,
     output_objects: true,
     enable_reqheaders_recording: true
@@ -393,8 +393,8 @@ tap.test('records request headers correctly', function(t) {
     }, function(res) {
       res.resume();
       res.once('end', function() {
-        nock.restore();
-        var ret = nock.recorder.play();
+        nmock.restore();
+        var ret = nmock.recorder.play();
         t.equal(ret.length, 1);
         ret = ret[0];
         t.type(ret, 'object');
@@ -409,13 +409,13 @@ tap.test('records request headers correctly', function(t) {
   req.end();
 });
 
-tap.test('records and replays gzipped nocks correctly', function(t) {
+tap.test('records and replays gzipped nmocks correctly', function(t) {
 
-  nock.restore();
-  nock.recorder.clear();
-  t.equal(nock.recorder.play().length, 0);
+  nmock.restore();
+  nmock.recorder.clear();
+  t.equal(nmock.recorder.play().length, 0);
 
-  nock.recorder.rec({
+  nmock.recorder.rec({
     dont_print: true,
     output_objects: true
   });
@@ -431,14 +431,14 @@ tap.test('records and replays gzipped nocks correctly', function(t) {
     t.ok(resp.headers);
     t.equal(resp.headers['content-encoding'], 'gzip');
 
-    nock.restore();
-    var nockDefs = nock.recorder.play();
-    nock.recorder.clear();
-    nock.activate();
+    nmock.restore();
+    var nmockDefs = nmock.recorder.play();
+    nmock.recorder.clear();
+    nmock.activate();
 
     // Original bit.ly request is redirected to the target page.
-    t.true(nockDefs.length > 1);
-    var nocks = nock.define(nockDefs);
+    t.true(nmockDefs.length > 1);
+    var nmocks = nmock.define(nmockDefs);
 
     makeRequest(function(mockedErr, mockedResp) {
 
@@ -446,8 +446,8 @@ tap.test('records and replays gzipped nocks correctly', function(t) {
       t.deepEqual(mockedResp.body, resp.body);
       t.equal(mockedResp.headers['content-encoding'], 'gzip');
 
-      _.each(nocks, function(nock) {
-        nock.done();
+      _.each(nmocks, function(nmock) {
+        nmock.done();
       });
 
       t.end();
@@ -457,13 +457,13 @@ tap.test('records and replays gzipped nocks correctly', function(t) {
 
 });
 
-tap.test('records and replays gzipped nocks correctly when gzip is returned as a string', function(t) {
+tap.test('records and replays gzipped nmocks correctly when gzip is returned as a string', function(t) {
 
-  nock.restore();
-  nock.recorder.clear();
-  t.equal(nock.recorder.play().length, 0);
+  nmock.restore();
+  nmock.recorder.clear();
+  t.equal(nmock.recorder.play().length, 0);
 
-  nock.recorder.rec({
+  nmock.recorder.rec({
     dont_print: true,
     output_objects: true
   });
@@ -487,14 +487,14 @@ tap.test('records and replays gzipped nocks correctly when gzip is returned as a
     t.ok(resp.headers);
     t.equal(resp.headers['content-encoding'], 'gzip');
 
-    nock.restore();
-    var nockDefs = nock.recorder.play();
-    nock.recorder.clear();
-    nock.activate();
+    nmock.restore();
+    var nmockDefs = nmock.recorder.play();
+    nmock.recorder.clear();
+    nmock.activate();
 
     // Original bit.ly request is redirected to the target page.
-    t.true(nockDefs.length > 1);
-    var nocks = nock.define(nockDefs);
+    t.true(nmockDefs.length > 1);
+    var nmocks = nmock.define(nmockDefs);
 
     makeRequest(function(mockedErr, mockedResp) {
 
@@ -502,8 +502,8 @@ tap.test('records and replays gzipped nocks correctly when gzip is returned as a
       t.deepEqual(mockedResp.body, resp.body);
       t.equal(mockedResp.headers['content-encoding'], 'gzip');
 
-      _.each(nocks, function(nock) {
-        nock.done();
+      _.each(nmocks, function(nmock) {
+        nmock.done();
       });
 
       t.end();
@@ -513,13 +513,13 @@ tap.test('records and replays gzipped nocks correctly when gzip is returned as a
 
 });
 
-tap.test('records and replays nocks correctly', function(t) {
+tap.test('records and replays nmocks correctly', function(t) {
 
-  nock.restore();
-  nock.recorder.clear();
-  t.equal(nock.recorder.play().length, 0);
+  nmock.restore();
+  nmock.recorder.clear();
+  t.equal(nmock.recorder.play().length, 0);
 
-  nock.recorder.rec({
+  nmock.recorder.rec({
     dont_print: true,
     output_objects: true
   });
@@ -541,22 +541,22 @@ tap.test('records and replays nocks correctly', function(t) {
     t.ok(resp);
     t.ok(body);
 
-    nock.restore();
-    var nockDefs = nock.recorder.play();
-    nock.recorder.clear();
-    nock.activate();
+    nmock.restore();
+    var nmockDefs = nmock.recorder.play();
+    nmock.recorder.clear();
+    nmock.activate();
 
     // Original bit.ly request is redirected to the target page.
-    t.true(nockDefs.length > 1);
-    var nocks = nock.define(nockDefs);
+    t.true(nmockDefs.length > 1);
+    var nmocks = nmock.define(nmockDefs);
 
     makeRequest(function(mockedErr, mockedResp, mockedBody) {
 
       t.equal(err, mockedErr);
       t.equal(body, mockedBody);
 
-      _.each(nocks, function(nock) {
-        nock.done();
+      _.each(nmocks, function(nmock) {
+        nmock.done();
       });
 
       t.end();
@@ -567,11 +567,11 @@ tap.test('records and replays nocks correctly', function(t) {
 });
 
 tap.test('doesn\'t record request headers by default', function(t) {
-  nock.restore();
-  nock.recorder.clear();
-  t.equal(nock.recorder.play().length, 0);
+  nmock.restore();
+  nmock.recorder.clear();
+  t.equal(nmock.recorder.play().length, 0);
 
-  nock.recorder.rec({
+  nmock.recorder.rec({
     dont_print: true,
     output_objects: true
   });
@@ -584,8 +584,8 @@ tap.test('doesn\'t record request headers by default', function(t) {
     }, function(res) {
       res.resume();
       res.once('end', function() {
-        nock.restore();
-        var ret = nock.recorder.play();
+        nmock.restore();
+        var ret = nmock.recorder.play();
         t.equal(ret.length, 1);
         ret = ret[0];
         t.type(ret, 'object');
@@ -600,16 +600,16 @@ tap.test('doesn\'t record request headers by default', function(t) {
 
 tap.test('will call a custom logging function', function(t) {
   // This also tests that use_separator is on by default.
-  nock.restore();
-  nock.recorder.clear();
-  t.equal(nock.recorder.play().length, 0);
+  nmock.restore();
+  nmock.recorder.clear();
+  t.equal(nmock.recorder.play().length, 0);
 
   var record = [];
   var arrayLog = function(content) {
     record.push(content);
   }
 
-  nock.recorder.rec({
+  nmock.recorder.rec({
     logging: arrayLog
   });
 
@@ -621,7 +621,7 @@ tap.test('will call a custom logging function', function(t) {
     }, function(res) {
       res.resume();
       res.once('end', function() {
-        nock.restore();
+        nmock.restore();
 
         t.equal(record.length, 1)
         var ret = record[0]
@@ -635,16 +635,16 @@ tap.test('will call a custom logging function', function(t) {
 
 
 tap.test('use_separator:false is respected', function(t) {
-  nock.restore();
-  nock.recorder.clear();
-  t.equal(nock.recorder.play().length, 0);
+  nmock.restore();
+  nmock.recorder.clear();
+  t.equal(nmock.recorder.play().length, 0);
 
   var record = [];
   var arrayLog = function(content) {
     record.push(content);
   }
 
-  nock.recorder.rec({
+  nmock.recorder.rec({
     logging: arrayLog,
     output_objects: true,
     use_separator: false,
@@ -658,7 +658,7 @@ tap.test('use_separator:false is respected', function(t) {
     }, function(res) {
       res.resume();
       res.once('end', function() {
-        nock.restore();
+        nmock.restore();
         t.equal(record.length, 1)
         var ret = record[0];
         t.type(ret, 'object'); // this is still an object, because the "cut here" strings have not been appended
@@ -671,11 +671,11 @@ tap.test('use_separator:false is respected', function(t) {
 
 
 tap.test('records request headers except user-agent if enable_reqheaders_recording is set to true', function(t) {
-  nock.restore();
-  nock.recorder.clear();
-  t.equal(nock.recorder.play().length, 0);
+  nmock.restore();
+  nmock.recorder.clear();
+  t.equal(nmock.recorder.play().length, 0);
 
-  nock.recorder.rec({
+  nmock.recorder.rec({
     dont_print: true,
     output_objects: true,
     enable_reqheaders_recording: true
@@ -689,8 +689,8 @@ tap.test('records request headers except user-agent if enable_reqheaders_recordi
     }, function(res) {
       res.resume();
       res.once('end', function() {
-        nock.restore();
-        var ret = nock.recorder.play();
+        nmock.restore();
+        var ret = nmock.recorder.play();
         t.equal(ret.length, 1);
         ret = ret[0];
         t.type(ret, 'object');
@@ -704,11 +704,11 @@ tap.test('records request headers except user-agent if enable_reqheaders_recordi
 });
 
 tap.test('includes query parameters from superagent', function(t) {
-  nock.restore();
-  nock.recorder.clear();
-  t.equal(nock.recorder.play().length, 0);
+  nmock.restore();
+  nmock.recorder.clear();
+  t.equal(nmock.recorder.play().length, 0);
 
-  nock.recorder.rec({
+  nmock.recorder.rec({
     dont_print: true,
     output_objects: true
   });
@@ -716,8 +716,8 @@ tap.test('includes query parameters from superagent', function(t) {
   superagent.get('http://google.com')
     .query({q: 'test search' })
     .end(function(res) {
-      nock.restore();
-      var ret = nock.recorder.play();
+      nmock.restore();
+      var ret = nmock.recorder.play();
       t.true(ret.length >= 1);
       t.equal(ret[0].path, '/?q=test%20search');
       t.end();
@@ -725,9 +725,9 @@ tap.test('includes query parameters from superagent', function(t) {
 });
 
 tap.test('works with clients listening for readable', function(t) {
-  nock.restore();
-  nock.recorder.clear();
-  t.equal(nock.recorder.play().length, 0);
+  nmock.restore();
+  nmock.recorder.clear();
+  t.equal(nmock.recorder.play().length, 0);
 
   var REQUEST_BODY = 'ABCDEF';
   var RESPONSE_BODY = '012345';
@@ -750,7 +750,7 @@ tap.test('works with clients listening for readable', function(t) {
       output_objects: true
     };
 
-    nock.recorder.rec(rec_options);
+    nmock.recorder.rec(rec_options);
 
     var req = http.request(options, function(res) {
       var readableCount = 0;
@@ -764,8 +764,8 @@ tap.test('works with clients listening for readable', function(t) {
         }
       });
       res.once('end', function() {
-        nock.restore();
-        var ret = nock.recorder.play();
+        nmock.restore();
+        var ret = nmock.recorder.play();
         t.equal(ret.length, 1);
         ret = ret[0];
         t.type(ret, 'object');
@@ -789,11 +789,11 @@ tap.test('works with clients listening for readable', function(t) {
 });
 
 tap.test('outputs query string parameters using query()', function(t) {
-  nock.restore();
-  nock.recorder.clear();
-  t.equal(nock.recorder.play().length, 0);
+  nmock.restore();
+  nmock.recorder.clear();
+  t.equal(nmock.recorder.play().length, 0);
 
-  nock.recorder.rec(true);
+  nmock.recorder.rec(true);
 
   var makeRequest = function(callback) {
     superagent
@@ -807,35 +807,35 @@ tap.test('outputs query string parameters using query()', function(t) {
     t.ok(resp, 'have response');
     t.ok(resp.headers, 'have headers');
 
-    var ret = nock.recorder.play();
+    var ret = nmock.recorder.play();
     t.equal(ret.length, 1);
     t.type(ret[0], 'string');
-    var match = "\nnock('https://example.com:443', {\"encodedQueryParams\":true})\n  .get('/')\n  .query({\"param1\":\"1\",\"param2\":\"2\"})\n  .reply(";
+    var match = "\nnmock('https://example.com:443', {\"encodedQueryParams\":true})\n  .get('/')\n  .query({\"param1\":\"1\",\"param2\":\"2\"})\n  .reply(";
     t.equal(ret[0].substring(0, match.length), match);
     t.end();
   });
 });
 
 tap.test('removes query params from from that path and puts them in query()', function(t) {
-  nock.restore();
-  nock.recorder.clear();
-  t.equal(nock.recorder.play().length, 0);
+  nmock.restore();
+  nmock.recorder.clear();
+  t.equal(nmock.recorder.play().length, 0);
   var options = { method: 'POST'
                 , host:'google.com'
                 , port:80
                 , path:'/?param1=1&param2=2' }
   ;
 
-  nock.recorder.rec(true);
+  nmock.recorder.rec(true);
   var req = http.request(options, function(res) {
     res.resume();
     var ret;
     res.once('end', function() {
-      nock.restore();
-      ret = nock.recorder.play();
+      nmock.restore();
+      ret = nmock.recorder.play();
       t.equal(ret.length, 1);
       t.type(ret[0], 'string');
-      t.equal(ret[0].indexOf("\nnock('http://google.com:80', {\"encodedQueryParams\":true})\n  .post('/', \"ABCDEF\")\n  .query({\"param1\":\"1\",\"param2\":\"2\"})\n  .reply("), 0);
+      t.equal(ret[0].indexOf("\nnmock('http://google.com:80', {\"encodedQueryParams\":true})\n  .post('/', \"ABCDEF\")\n  .query({\"param1\":\"1\",\"param2\":\"2\"})\n  .reply("), 0);
       t.end();
     });
   });
@@ -852,9 +852,9 @@ tap.test("respects http.request() consumers", function(t) {
   }).listen(8082, function(err) {
     t.equal(err, undefined);
 
-    nock.restore();
-    nock.recorder.clear();
-    nock.recorder.rec({
+    nmock.restore();
+    nmock.recorder.clear();
+    nmock.recorder.rec({
       dont_print: true,
       output_objects: true
     });
@@ -873,7 +873,7 @@ tap.test("respects http.request() consumers", function(t) {
             buffer = Buffer.concat([buffer, data]);
           })
           .on('end', function() {
-            nock.restore();
+            nmock.restore();
             t.equal(buffer.toString(), 'foobar');
             t.end();
 

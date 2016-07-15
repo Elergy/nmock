@@ -1,5 +1,5 @@
 {
-  "name": "nock",
+  "name": "nmock",
   "description": "HTTP Server mocking for Node.js",
   "tags": [
     "Mock",
@@ -7,8 +7,8 @@
     "testing",
     "isolation"
   ],
-  "version": "8.0.0",
-  "author": "Pedro Teixeira <pedro.teixeira@gmail.com>",
+  "version": "0.9.0",
+  "author": "Eugene Ponomarev <ponomarev.e.s@gmail.com>",
   "contributors": [
     {
       "name": "Bin Chang",
@@ -153,10 +153,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "http://github.com/node-nock/nock.git"
+    "url": "http://github.com/elergy/nmock.git"
   },
   "bugs": {
-    "url": "http://github.com/node-nock/nock/issues"
+    "url": "https://github.com/elergy/nmock/issues"
   },
   "engines": [
     "node >= 0.10.0"
@@ -167,7 +167,7 @@
     "debug": "^2.2.0",
     "deep-equal": "^1.0.0",
     "json-stringify-safe": "^5.0.1",
-    "lodash": "^4.8.2",
+    "lodash": "^4.9.0",
     "mkdirp": "^0.5.0",
     "propagate": "0.4.0",
     "qs": "^6.0.2"
@@ -198,7 +198,7 @@
     "coverage": "node --harmony node_modules/istanbul/lib/cli.js cover tests/test.js && istanbul check-coverage",
     "coveralls": "cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
     "jshint": "jshint lib/*.js",
-    "changelog": "changelog nock all -m > CHANGELOG.md"
+    "changelog": "changelog nmock all -m > CHANGELOG.md"
   },
   "pre-commit": [
     "jshint",

@@ -1,14 +1,14 @@
 /*
 Default net connect.
 No mock.
-Result: Nock allows request to proceed.
+Result: nmock allows request to proceed.
 */
 
 var log = require('./_log');
 
 var events = ['socket', 'response', 'end', 'data', 'error'];
 
-var nock = require('../');
+var nmock = require('../');
 
 var http = require('http');
 console.log('making request...')

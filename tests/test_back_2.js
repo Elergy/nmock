@@ -1,8 +1,8 @@
 'use strict';
 
 var test     = require('tap').test;
-var nock = require('../');
-var nockBack = nock.back;
+var nmock = require('../');
+var nmockBack = nmock.back;
 var http = require("http");
 var rimraf = require('rimraf');
 var fs = require('fs');
@@ -17,23 +17,23 @@ function rimrafOnEnd(t) {
 }
 
 test('setup', function(t) {
-  originalMode = nockBack.currentMode;
+  originalMode = nmockBack.currentMode;
 
-  nock.enableNetConnect();
-  nockBack.fixtures = __dirname + "/fixtures";
-  fixture = nockBack.fixtures + '/recording_test.json'
+  nmock.enableNetConnect();
+  nmockBack.fixtures = __dirname + "/fixtures";
+  fixture = nmockBack.fixtures + '/recording_test.json'
   rimraf.sync(fixture);
 
-  nockBack.setMode("record");
+  nmockBack.setMode("record");
   t.end();
 });
 
 
 test('recording', function(t) {
-  nockBack('recording_test.json', function(nockDone) {
+  nmockBack('recording_test.json', function(nmockDone) {
     http.get('http://google.com', function(res) {
       res.once('end', function() {
-        nockDone();
+        nmockDone();
         var fixtureContent = JSON.parse(fs.readFileSync(fixture, {encoding: 'utf8'}));
         t.equal(fixtureContent.length, 1);
         fixtureContent = fixtureContent[0];
@@ -52,10 +52,10 @@ test('recording', function(t) {
 });
 
 test('passes custom options to recorder', function(t) {
-  nockBack('recording_test.json', { recorder: { enable_reqheaders_recording: true } }, function(nockDone) {
+  nmockBack('recording_test.json', { recorder: { enable_reqheaders_recording: true } }, function(nmockDone) {
     http.get('http://google.com', function(res) {
       res.once('end', function() {
-        nockDone();
+        nmockDone();
         var fixtureContent = JSON.parse(fs.readFileSync(fixture, {encoding: 'utf8'}));
         t.equal(fixtureContent.length, 1);
         fixtureContent = fixtureContent[0];
@@ -71,6 +71,6 @@ test('passes custom options to recorder', function(t) {
 });
 
 test('teardown', function(t) {
-  nockBack.setMode(originalMode);
+  nmockBack.setMode(originalMode);
   t.end();
 });

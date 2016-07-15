@@ -3,11 +3,11 @@
 var test          = require('tap').test;
 var mikealRequest = require('request');
 
-test('NOCK_OFF=true works for https', function(t) {
-  var original = process.env.NOCK_OFF;
-  process.env.NOCK_OFF = 'true';
-  var nock = require('../');
-  var scope = nock('https://www.google.com')
+test('NMOCK_OFF=true works for https', function(t) {
+  var original = process.env.NMOCK_OFF;
+  process.env.NMOCK_OFF = 'true';
+  var nmock = require('../');
+  var scope = nmock('https://www.google.com')
   .get('/')
   .reply(200, {foo: 'bar'});
 
@@ -20,7 +20,7 @@ test('NOCK_OFF=true works for https', function(t) {
     t.notOk(err);
     t.notDeepEqual(body, '{"foo":"bar"}');
     scope.done();
-    process.env.NOCK_OFF = original;
+    process.env.NMOCK_OFF = original;
     t.end();
   });
 });

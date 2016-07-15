@@ -11,9 +11,9 @@ var test = require('tap').test;
 var before = test;
 var after  = test;
 
-var nock = require('../.');
+var nmock = require('../.');
 
-nock.enableNetConnect();
+nmock.enableNetConnect();
 
 var server;
 

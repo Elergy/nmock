@@ -1,11 +1,11 @@
 'use strict';
 
-var nock = require('../');
+var nmock = require('../');
 var test = require('tap').test;
 var fetch = require('isomorphic-fetch');
 
 test("basic match works", function(t) {
-  var scope = nock('http://isomorphicfetchland.com').
+  var scope = nmock('http://isomorphicfetchland.com').
     get('/path').
     reply(200, 'somedata');
 
@@ -24,7 +24,7 @@ test("basic match works", function(t) {
 });
 
 test("string-based reqheaders match works", function(t) {
-  var scope = nock('http://isomorphicfetchland.com', {
+  var scope = nmock('http://isomorphicfetchland.com', {
       reqheaders: {
         'header': 'header value',
       }

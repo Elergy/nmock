@@ -1,6 +1,6 @@
 'use strict';
 
-var nock = require('../');
+var nmock = require('../');
 var AWS = require('aws-sdk');
 var test = require('tap').test;
 
@@ -21,7 +21,7 @@ test('works with s3, body < 1024 ^ 2', function (t) {
     }
   });
 
-  nock('https://bucket.s3.amazonaws.com').put('/key').reply(200);
+  nmock('https://bucket.s3.amazonaws.com').put('/key').reply(200);
 
   bucket.putObject({
       Key: 'key',
@@ -53,7 +53,7 @@ test('works with s3, body = 10 * 1024 ^ 2', function (t) {
     }
   });
 
-  nock('https://bucket.s3.amazonaws.com').put('/key').reply(200);
+  nmock('https://bucket.s3.amazonaws.com').put('/key').reply(200);
 
   bucket.putObject({
       Key: 'key',
@@ -84,7 +84,7 @@ test('works with s3, body = 16 * 1024 ^ 2', function (t) {
     }
   });
 
-  nock('https://bucket.s3.amazonaws.com').put('/key').reply(200);
+  nmock('https://bucket.s3.amazonaws.com').put('/key').reply(200);
 
   bucket.putObject({
       Key: 'key',

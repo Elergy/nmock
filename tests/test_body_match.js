@@ -1,13 +1,13 @@
 'use strict';
 
-var nock = require('../');
+var nmock = require('../');
 var test = require('tap').test;
 var mikealRequest = require('request');
 var assert = require('assert');
 
 test('match body with regex', function (t) {
 
-  nock('http://encodingsareus.com')
+  nmock('http://encodingsareus.com')
     .post('/', {auth: {passwd: /a.+/}})
     .reply(200);
 
