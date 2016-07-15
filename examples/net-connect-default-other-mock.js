@@ -1,16 +1,16 @@
 /*
 Default net connect.
 Mock the different hostname:port.
-Result: Nock allows request to proceed.
+Result: nmock allows request to proceed.
 */
 
 var log = require('./_log');
 
 var events = ['socket', 'response', 'end', 'data', 'error'];
 
-var nock = require('../');
+var nmock = require('../');
 
-nock('http://someotherservice.com').get('/').reply(200, 'whaaa');
+nmock('http://someotherservice.com').get('/').reply(200, 'whaaa');
 
 var http = require('http');
 var req = http.get('http://www.google.com/', function(res) {

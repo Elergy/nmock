@@ -1,5 +1,5 @@
 var zlib = require('zlib');
-var nock = require('../.');
+var nmock = require('../.');
 var http = require('http');
 var test = require('tap').test;
 
@@ -9,7 +9,7 @@ if (zlib.gzipSync && zlib.gunzipSync) {
 
     var compressedMessage = zlib.gzipSync(message);
 
-    nock('http://gziplandpartywoo')
+    nmock('http://gziplandpartywoo')
       .get('/foo')
       .reply(200, compressedMessage, {
         'X-Transfer-Length': String(compressedMessage.length),

@@ -1,6 +1,6 @@
 'use strict';
 
-var nock = require('../');
+var nmock = require('../');
 var AWS = require('aws-sdk');
 var test = require('tap').test;
 
@@ -17,7 +17,7 @@ test('works with dynamodb', function(t) {
 
   var db = new AWS.DynamoDB();
 
-  nock('https://dynamodb.' + REGION + '.amazonaws.com')
+  nmock('https://dynamodb.' + REGION + '.amazonaws.com')
       .post('/')
       .reply(200, {});
 

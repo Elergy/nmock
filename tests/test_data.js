@@ -1,13 +1,13 @@
 'use strict';
 
-var nock = require('../');
+var nmock = require('../');
 var http = require('http');
 var tap = require('tap')
 
 tap.test('data emits', function(t) {
   var reqBody = {data:{message:"hello"}};
 
-  nock("http://api.songkick.com")
+  nmock("http://api.songkick.com")
     .get('/api/3.0/search/venues.json?query=brudenell&apikey=XXXkeyXXX')
     .reply(200, reqBody);
 

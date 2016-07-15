@@ -3,11 +3,11 @@
 var assert = require('assert');
 var test    = require('tap').test;
 var mikealRequest = require('request');
-var nock    = require('../');
+var nmock    = require('../');
 
 test("follows redirects", function(t) {
 
-  nock('http://redirecter.com')
+  nmock('http://redirecter.com')
     .get('/YourAccount')
     .reply(302, undefined, {
         'Location': 'http://redirecter.com/Login'

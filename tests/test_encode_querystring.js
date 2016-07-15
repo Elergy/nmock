@@ -1,11 +1,11 @@
-var nock    = require('../.');
+var nmock    = require('../.');
 var request = require('request');
 var test    = require('tap').test;
 
 test('encode query string', function(t) {
   var query1 = { q: '(nodejs)' };
 
-  nock('https://encodeland.com')
+  nmock('https://encodeland.com')
     .get('/test')
     .query(query1)
     .reply(200, 'success')

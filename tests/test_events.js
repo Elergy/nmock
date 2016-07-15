@@ -1,11 +1,11 @@
 'use strict';
 
-var nock = require('../.');
+var nmock = require('../.');
 var http = require('http');
 var test = require('tap').test;
 
 test('emits request and replied events', function(t) {
-  var scope = nock('http://eventland')
+  var scope = nmock('http://eventland')
         .get('/please')
         .reply(200);
 
@@ -23,7 +23,7 @@ test('emits request and replied events', function(t) {
 });
 
 test('emits no match when no match and no mock', function(t) {
-  nock.emitter.once('no match', function(req) {
+  nmock.emitter.once('no match', function(req) {
     t.end();
   });
 
@@ -33,28 +33,28 @@ test('emits no match when no match and no mock', function(t) {
 
 test('emits no match when no match and mocked', function(t) {
 
-  nock('http://itmayormaynotexistidontknowreally')
+  nmock('http://itmayormaynotexistidontknowreally')
     .get('/')
     .reply('howdy');
 
 
   var assertion = function(req) {
     t.equal(req.path, '/definitelymaybe');
-    nock.emitter.removeAllListeners('no match');
+    nmock.emitter.removeAllListeners('no match');
     t.end();
   }
-  var result = nock.emitter.on('no match', assertion);
+  var result = nmock.emitter.on('no match', assertion);
 
   http.get('http://itmayormaynotexistidontknowreally/definitelymaybe')
     .once('error', ignore);
 });
 
 test('emits no match when netConnect is disabled', function(t) {
-  nock.disableNetConnect();
-  nock.emitter.on('no match', function(req) {
+  nmock.disableNetConnect();
+  nmock.emitter.on('no match', function(req) {
     t.equal(req.hostname, 'jsonip.com')
-    nock.emitter.removeAllListeners('no match');
-    nock.enableNetConnect();
+    nmock.emitter.removeAllListeners('no match');
+    nmock.enableNetConnect();
     t.end();
   });
   http.get('http://jsonip.com').once('error', ignore);
