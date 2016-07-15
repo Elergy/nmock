@@ -6,6 +6,7 @@
 [![devDependency Status](https://david-dm.org/Elergy/nmock/master/dev-status.svg)](https://david-dm.org/Elergy/nmock#info=devDependencies)
 
 NMock is an HTTP mocking and expectations library for Node.js
+
 NMock is a fork of [Nock](https://github.com/node-nock/nock)
 
 NMock can be used to test modules that perform HTTP requests in isolation.
