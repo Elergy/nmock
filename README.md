@@ -1,7 +1,7 @@
 # Nock
 
-[![Build Status](https://secure.travis-ci.org/Elergy/nmcock.svg?branch=master)](http://travis-ci.org/Elergy/nmock?branch=master)
-[![Coverage Status](https://coveralls.io/repos/github/Elergy/nmcock/badge.svg?branch=master)](https://coveralls.io/github/Elergy/nmcock?branch=master)
+[![Build Status](https://secure.travis-ci.org/Elergy/nmock.svg?branch=master)](http://travis-ci.org/Elergy/nmock?branch=master)
+[![Coverage Status](https://coveralls.io/repos/github/Elergy/nmock/badge.svg?branch=master)](https://coveralls.io/github/Elergy/nmock?branch=master)
 
 
 Nock is an HTTP mocking and expectations library for Node.js
