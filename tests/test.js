@@ -17,11 +17,11 @@ require('./test_back_2');
 require('./test_data');
 require('./test_ipv6');
 require('./test_request_promise');
-if (process.versions.node >= '0.11' ) {
-  require('./test_isomorphic_fetch');
+if (process.versions.node >= '0.11') {
+    require('./test_isomorphic_fetch');
 }
-if (process.versions.node >= '0.11' ) {
-  require('./test_browserify');
+if (process.versions.node >= '0.11') {
+    require('./test_browserify');
 }
 require('./test_encode_querystring');
 require('./test_body_match');

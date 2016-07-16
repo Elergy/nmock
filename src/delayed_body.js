@@ -1,81 +1,66 @@
 'use strict';
 
-/**
- * Creates a stream which becomes the response body of the interceptor when a
- * delay is set. The stream outputs the intended body and EOF after the delay.
- *
- * @param  {String|Buffer|Stream} body - the body to write/pipe out
- * @param  {Integer} ms - The delay in milliseconds
- * @constructor
- */
-module.exports = DelayedBody;
+let Transform = require('stream').Transform;
+let EventEmitter = require('events').EventEmitter;
+let common = require('./common');
 
-var Transform = require('stream').Transform;
-var EventEmitter = require('events').EventEmitter;
-var noop = function () {};
-var util = require('util');
-var common = require('./common');
+class FakeTransformStream extends EventEmitter {
+    constructor() {
+        super();
+    }
+
+    pause() {
+    }
+
+    resume() {
+    }
+
+    setEncoding() {
+    }
+
+    write(chunk, encoding) {
+        process.nextTick(() => this.emit('data', chunk, encoding));
+    }
+
+    end(chunk) {
+        if (chunk) {
+            this.write(chunk);
+        }
+        process.nextTick(() => this.emit('end'));
+    }
+}
 
 if (!Transform) {
-  // for barebones compatibility for node < 0.10
-  var FakeTransformStream = function () {
-    EventEmitter.call(this);
-  };
-  util.inherits(FakeTransformStream, EventEmitter);
-  FakeTransformStream.prototype.pause = noop;
-  FakeTransformStream.prototype.resume = noop;
-  FakeTransformStream.prototype.setEncoding = noop;
-  FakeTransformStream.prototype.write = function (chunk, encoding) {
-    var self = this;
-    process.nextTick(function () {
-      self.emit('data', chunk, encoding);
-    });
-  };
-  FakeTransformStream.prototype.end = function (chunk) {
-    var self = this;
-    if (chunk) {
-      self.write(chunk);
-    }
-    process.nextTick(function () {
-      self.emit('end');
-    });
-  };
-
-  Transform = FakeTransformStream;
+    Transform = FakeTransformStream;
 }
 
-function DelayedBody(ms, body) {
-  Transform.call(this);
+class DelayedBody extends Transform {
+    constructor(ms, body) {
+        super();
 
-  var self = this;
-  var data = '';
-  var ended = false;
+        let data = '';
+        let ended = false;
 
-  if (common.isStream(body)) {
-    body.on('data', function (chunk) {
-      data += Buffer.isBuffer(chunk) ? chunk.toString() : chunk;
-    });
+        if (common.isStream(body)) {
+            body.on('data', (chunk) => data += Buffer.isBuffer(chunk) ? chunk.toString() : chunk);
+            body.once('end', () => ended = true);
 
-    body.once('end', function () {
-      ended = true;
-    });
+            body.resume();
+        }
 
-    body.resume();
-  }
-
-  setTimeout(function () {
-    if (common.isStream(body) && !ended) {
-      body.once('end', function () {
-        self.end(data);
-      });
-    } else {
-      self.end(data || body);
+        setTimeout(() => {
+            if (common.isStream(body) && !ended) {
+                body.once('end', () => this.end(data));
+            } else {
+                this.end(data || body);
+            }
+        }, ms);
     }
-  }, ms);
+    
+    _transform(chunk, encoding, cb) {
+        this.push(chunk);
+        process.nextTick(cb);
+    }
 }
-util.inherits(DelayedBody, Transform);
 
-DelayedBody.prototype._transform = function (chunk, encoding, cb) {
-  this.push(chunk);
-  process.nextTick(cb);
-};
+module.exports = DelayedBody;
