@@ -1,8 +1,16 @@
 'use strict';
 
+let {isContentEncoded} = require('./common/type-content');
+let {
+    headersFieldNamesToLowerCase, 
+    headersFieldsArrayToLowerCase
+} = require('./common/headers');
+let matchStringOrRegexp = require('./common/match-string-or-regexp');
+let formatQueryValue = require('./common/format-query-value');
+let isStream = require('./common/is-stream');
+
 var mixin           = require('./mixin')
     , matchBody       = require('./match_body')
-    , common          = require('./common')
     , _               = require('lodash')
     , debug           = require('debug')('nmock.scope')
     , stringify       = require('json-stringify-safe')
@@ -34,8 +42,8 @@ function Interceptor(scope, uri, method, requestBody, interceptorOptions) {
     this._requestBody = requestBody;
 
     //  We use lower-case header field names throughout nmock.
-    this.reqheaders = common.headersFieldNamesToLowerCase((scope.scopeOptions && scope.scopeOptions.reqheaders) || {});
-    this.badheaders = common.headersFieldsArrayToLowerCase((scope.scopeOptions && scope.scopeOptions.badheaders) || []);
+    this.reqheaders = headersFieldNamesToLowerCase((scope.scopeOptions && scope.scopeOptions.reqheaders) || {});
+    this.badheaders = headersFieldsArrayToLowerCase((scope.scopeOptions && scope.scopeOptions.badheaders) || []);
 
 
     this.delayInMs = 0;
@@ -60,7 +68,7 @@ Interceptor.prototype.reply = function reply(statusCode, body, headers) {
     this.statusCode = statusCode;
 
     //  We use lower-case headers throughout nmock.
-    headers = common.headersFieldNamesToLowerCase(headers);
+    headers = headersFieldNamesToLowerCase(headers);
 
     _.defaults(this.options, this.scope.scopeOptions);
 
@@ -91,11 +99,11 @@ Interceptor.prototype.reply = function reply(statusCode, body, headers) {
 
     //  If the content is not encoded we may need to transform the response body.
     //  Otherwise we leave it as it is.
-    if (!common.isContentEncoded(headers)) {
+    if (!isContentEncoded(headers)) {
         if (body && typeof(body) !== 'string' &&
             typeof(body) !== 'function' &&
             !Buffer.isBuffer(body) &&
-            !common.isStream(body)) {
+            !isStream(body)) {
             try {
                 body = stringify(body);
                 if (!this.headers) {
@@ -167,7 +175,7 @@ Interceptor.prototype.reqheaderMatches = function reqheaderMatches(options, key)
     if (reqHeader && header) {
         if (_.isFunction(reqHeader)) {
             return reqHeader(header);
-        } else if (common.matchStringOrRegexp(header, reqHeader)) {
+        } else if (matchStringOrRegexp(header, reqHeader)) {
             return true;
         }
     }
@@ -205,7 +213,7 @@ Interceptor.prototype.match = function match(options, body, hostNameOnly) {
         if (_.isFunction(header.value)) {
             return header.value(options.getHeader(header.name));
         }
-        return common.matchStringOrRegexp(options.getHeader(header.name), header.value);
+        return matchStringOrRegexp(options.getHeader(header.name), header.value);
     };
 
     if (!this.scope.matchHeaders.every(checkHeaders) ||
@@ -286,11 +294,11 @@ Interceptor.prototype.match = function match(options, body, hostNameOnly) {
                         if (val === undefined || expVal === undefined) {
                         isMatch = false;
                     } else if (expVal instanceof RegExp) {
-                      isMatch = common.matchStringOrRegexp(val, expVal);
+                      isMatch = matchStringOrRegexp(val, expVal);
                     } else if (_.isArray(expVal) || _.isObject(expVal)) {
                       isMatch = _.isEqual(val, expVal);
                     } else {
-                      isMatch = common.matchStringOrRegexp(val, expVal);
+                      isMatch = matchStringOrRegexp(val, expVal);
                     }
                 matchQueries = matchQueries && !!isMatch;
                 });
@@ -309,8 +317,8 @@ Interceptor.prototype.match = function match(options, body, hostNameOnly) {
         this.uri.call(this, path);
     } else {
         matches = method === this.method &&
-        common.matchStringOrRegexp(matchKey, this.basePath) &&
-        common.matchStringOrRegexp(path, this.path) &&
+        matchStringOrRegexp(matchKey, this.basePath) &&
+        matchStringOrRegexp(path, this.path) &&
         matchQueries;
     }
 
@@ -342,7 +350,7 @@ Interceptor.prototype.matchIndependentOfBody = function matchIndependentOfBody(o
     }
 
     var checkHeaders = function(header) {
-        return options.getHeader && common.matchStringOrRegexp(options.getHeader(header.name), header.value);
+        return options.getHeader && matchStringOrRegexp(options.getHeader(header.name), header.value);
     };
 
     if (!this.scope.matchHeaders.every(checkHeaders) ||
@@ -410,7 +418,7 @@ Interceptor.prototype.query = function query(queries) {
     for (var q in queries) {
         if (_.isUndefined(this.queries[q])) {
             var value = queries[q];
-            var formatedPair = common.formatQueryValue(q, value, this.scope.scopeOptions);
+            var formatedPair = formatQueryValue(q, value, this.scope.scopeOptions);
             this.queries[formatedPair[0]] = formatedPair[1];
         }
     }

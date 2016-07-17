@@ -109,10 +109,6 @@ test("reply can take a callback", function(t) {
       path: '/',
       port: 80
   }, function(res) {
-      console.log('wtf res!!!');
-      console.log(res);
-      console.log(res.statusCode);
-
     t.equal(res.statusCode, 200, "Status code is 200");
     res.on('end', function() {
       t.ok(dataCalled, "data handler was called");

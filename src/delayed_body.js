@@ -2,7 +2,7 @@
 
 let Transform = require('stream').Transform;
 let EventEmitter = require('events').EventEmitter;
-let common = require('./common');
+let isStream = require('./common/is-stream');
 
 class FakeTransformStream extends EventEmitter {
     constructor() {
@@ -41,7 +41,7 @@ class DelayedBody extends Transform {
         let data = '';
         let ended = false;
 
-        if (common.isStream(body)) {
+        if (isStream(body)) {
             body.on('data', (chunk) => data += Buffer.isBuffer(chunk) ? chunk.toString() : chunk);
             body.once('end', () => ended = true);
 
@@ -49,7 +49,7 @@ class DelayedBody extends Transform {
         }
 
         setTimeout(() => {
-            if (common.isStream(body) && !ended) {
+            if (isStream(body) && !ended) {
                 body.once('end', () => this.end(data));
             } else {
                 this.end(data || body);

@@ -11,7 +11,7 @@ module.exports.recorder = {
 module.exports.back = require('./lib/back');
 module.exports.restore = recorder.restore;
 
-},{"./lib/back":2,"./lib/recorder":10,"./lib/scope":12}],2:[function(require,module,exports){
+},{"./lib/back":2,"./lib/recorder":20,"./lib/scope":22}],2:[function(require,module,exports){
 (function (process){
 'use strict';
 
@@ -298,102 +298,268 @@ Back.setMode(process.env.NMOCK_BACK_MODE || 'dryrun');
 
 module.exports = Back;
 }).call(this,require('_process'))
-},{"./recorder":10,"./scope":12,"_process":26,"chai":60,"debug":96,"fs":14,"lodash":103,"mkdirp":104,"path":25,"util":58}],3:[function(require,module,exports){
-(function (Buffer){
+},{"./recorder":20,"./scope":22,"_process":36,"chai":70,"debug":106,"fs":24,"lodash":113,"mkdirp":114,"path":35,"util":68}],3:[function(require,module,exports){
 'use strict';
 
 var _ = require('lodash');
-var debug = require('debug')('nmock.common');
+
+var _require = require('./percent-encoding');
+
+var percentDecode = _require.percentDecode;
+
+// return [newKey, newValue]
+
+function formatQueryValue(key, value, options) {
+    var i;
+
+    (function () {
+        switch (true) {
+            case _.isNumber(value): // fall-though
+            case _.isBoolean(value):
+                value = value.toString();
+                break;
+            case _.isUndefined(value): // fall-though
+            case _.isNull(value):
+                value = '';
+                break;
+            case _.isString(value):
+                if (options.encodedQueryParams) {
+                    value = percentDecode(value);
+                }
+                break;
+            case value instanceof RegExp:
+                break;
+            case _.isArray(value):
+                var tmpArray = new Array(value.length);
+                for (i = 0; i < value.length; ++i) {
+                    tmpArray[i] = formatQueryValue(i, value[i], options)[1];
+                }
+                value = tmpArray;
+                break;
+            case _.isObject(value):
+                var tmpObj = {};
+                _.forOwn(value, function (subVal, subKey) {
+                    var subPair = formatQueryValue(subKey, subVal, options);
+                    tmpObj[subPair[0]] = subPair[1];
+                });
+                value = tmpObj;
+                break;
+        }
+    })();
+
+    if (options.encodedQueryParams) {
+        key = percentDecode(key);
+    }
+    return [key, value];
+}
+
+module.exports = formatQueryValue;
+},{"./percent-encoding":11,"lodash":113}],4:[function(require,module,exports){
+'use strict';
+
+var _ = require('lodash');
+
+function headersFieldNamesToLowerCase(headers) {
+    if (!_.isObject(headers)) {
+        return headers;
+    }
+
+    //  For each key in the headers, delete its value and reinsert it with lower-case key.
+    //  Keys represent headers field names.
+    var lowerCaseHeaders = {};
+    _.forOwn(headers, function (fieldVal, fieldName) {
+        var lowerCaseFieldName = fieldName.toLowerCase();
+        if (!_.isUndefined(lowerCaseHeaders[lowerCaseFieldName])) {
+            var msg = 'Failed to convert header keys to lower case due to field name conflict: ' + lowerCaseFieldName;
+            throw new Error(msg);
+        }
+        lowerCaseHeaders[lowerCaseFieldName] = fieldVal;
+    });
+
+    return lowerCaseHeaders;
+}
+
+function headersFieldsArrayToLowerCase(headers) {
+    return _.uniq(_.map(headers, function (fieldName) {
+        return fieldName.toLowerCase();
+    }));
+}
 
 /**
- * Normalizes the request options so that it always has `host` property.
+ * Deletes the given `fieldName` property from `headers` object by performing
+ * case-insensitive search through keys.
  *
- * @param  {Object} options - a parsed options object of the request
+ * @headers   {Object} headers - object of header field names and values
+ * @fieldName {String} field name - string with the case-insensitive field name
  */
-var normalizeRequestOptions = function normalizeRequestOptions(options) {
-  options.proto = options.proto || (options._https_ ? 'https' : 'http');
-  options.port = options.port || (options.proto === 'http' ? 80 : 443);
-  if (options.host) {
-    debug('options.host:', options.host);
-    if (!options.hostname) {
-      if (options.host.split(':').length == 2) {
-        options.hostname = options.host.split(':')[0];
-      } else {
-        options.hostname = options.host;
-      }
+function deleteHeadersField(headers, fieldNameToDelete) {
+    if (!_.isObject(headers) || !_.isString(fieldNameToDelete)) {
+        return;
     }
-  }
-  debug('options.hostname in the end: %j', options.hostname);
-  options.host = (options.hostname || 'localhost') + ':' + options.port;
-  debug('options.host in the end: %j', options.host);
 
-  /// lowercase host names
-  ['hostname', 'host'].forEach(function (attr) {
-    if (options[attr]) {
-      options[attr] = options[attr].toLowerCase();
+    var lowerCaseFieldNameToDelete = fieldNameToDelete.toLowerCase();
+
+    //  Search through the headers and delete all values whose field name matches the given field name.
+    _(headers).keys().each(function (fieldName) {
+        var lowerCaseFieldName = fieldName.toLowerCase();
+        if (lowerCaseFieldName === lowerCaseFieldNameToDelete) {
+            delete headers[fieldName];
+            //  We don't stop here but continue in order to remove *all* matching field names
+            //  (even though if seen regorously there shouldn't be any)
+        }
+    });
+}
+
+module.exports.headersFieldNamesToLowerCase = headersFieldNamesToLowerCase;
+module.exports.headersFieldsArrayToLowerCase = headersFieldsArrayToLowerCase;
+module.exports.deleteHeadersField = deleteHeadersField;
+},{"lodash":113}],5:[function(require,module,exports){
+(function (Buffer){
+'use strict';
+
+function compareBuffers(lhs, rhs) {
+    if (lhs.length !== rhs.length) {
+        return false;
     }
-  });
 
-  return options;
-};
+    for (var i = 0; i < lhs.length; ++i) {
+        if (lhs[i] !== rhs[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
 
 /**
  * Returns true if the data contained in buffer is binary which in this case means
  * that it cannot be reconstructed from its utf8 representation.
  *
- * @param  {Object} buffer - a Buffer object
+ * @param  {object} buffer - a Buffer object
+ *
+ * @returns {boolean}
  */
-var isBinaryBuffer = function isBinaryBuffer(buffer) {
-
-  if (!Buffer.isBuffer(buffer)) {
-    return false;
-  }
-
-  //  Test if the buffer can be reconstructed verbatim from its utf8 encoding.
-  var utfEncodedBuffer = buffer.toString('utf8');
-  var reconstructedBuffer = new Buffer(utfEncodedBuffer, 'utf8');
-  var compareBuffers = function compareBuffers(lhs, rhs) {
-    if (lhs.length !== rhs.length) {
-      return false;
-    }
-
-    for (var i = 0; i < lhs.length; ++i) {
-      if (lhs[i] !== rhs[i]) {
+function isBinaryBuffer(buffer) {
+    if (!Buffer.isBuffer(buffer)) {
         return false;
-      }
     }
 
-    return true;
-  };
+    //  Test if the buffer can be reconstructed verbatim from its utf8 encoding.
+    var utfEncodedBuffer = buffer.toString('utf8');
+    var reconstructedBuffer = new Buffer(utfEncodedBuffer, 'utf8');
 
-  //  If the buffers are *not* equal then this is a "binary buffer"
-  //  meaning that it cannot be faitfully represented in utf8.
-  return !compareBuffers(buffer, reconstructedBuffer);
-};
+    //  If the buffers are *not* equal then this is a "binary buffer"
+    //  meaning that it cannot be faitfully represented in utf8.
+    return !compareBuffers(buffer, reconstructedBuffer);
+}
+
+module.exports = isBinaryBuffer;
+}).call(this,require("buffer").Buffer)
+},{"buffer":27}],6:[function(require,module,exports){
+(function (Buffer){
+'use strict';
+
+var _require = require('lodash');
+
+var isFunction = _require.isFunction;
+
+
+function isStream(obj) {
+    return obj && typeof a !== 'string' && !Buffer.isBuffer(obj) && isFunction(obj.setEncoding);
+}
+
+module.exports = isStream;
+}).call(this,{"isBuffer":require("../../node_modules/browserify/node_modules/insert-module-globals/node_modules/is-buffer/index.js")})
+},{"../../node_modules/browserify/node_modules/insert-module-globals/node_modules/is-buffer/index.js":34,"lodash":113}],7:[function(require,module,exports){
+"use strict";
+
+function matchStringOrRegexp(target, pattern) {
+    if (pattern instanceof RegExp) {
+        return target.toString().match(pattern);
+    } else {
+        return target === pattern;
+    }
+}
+
+module.exports = matchStringOrRegexp;
+},{}],8:[function(require,module,exports){
+(function (Buffer){
+'use strict';
+
+var _ = require('lodash');
 
 /**
  * If the chunks are Buffer objects then it returns a single Buffer object with the data from all the chunks.
  * If the chunks are strings then it returns a single string value with data from all the chunks.
  *
  * @param  {Array} chunks - an array of Buffer objects or strings
+ *
+ * @returns {Buffer|String}
  */
-var mergeChunks = function mergeChunks(chunks) {
+function mergeChunks(chunks) {
+    if (_.isEmpty(chunks)) {
+        return new Buffer(0);
+    }
 
-  if (_.isEmpty(chunks)) {
-    return new Buffer(0);
-  }
+    //  We assume that all chunks are Buffer objects if the first is buffer object.
+    var areBuffers = Buffer.isBuffer(_.first(chunks));
 
-  //  We assume that all chunks are Buffer objects if the first is buffer object.
-  var areBuffers = Buffer.isBuffer(_.first(chunks));
+    if (!areBuffers) {
+        //  When the chunks are not buffers we assume that they are strings.
+        return chunks.join('');
+    }
 
-  if (!areBuffers) {
-    //  When the chunks are not buffers we assume that they are strings.
-    return chunks.join('');
-  }
+    //  Merge all the buffers into a single Buffer object.
+    return Buffer.concat(chunks);
+}
 
-  //  Merge all the buffers into a single Buffer object.
-  return Buffer.concat(chunks);
-};
+module.exports = mergeChunks;
+}).call(this,require("buffer").Buffer)
+},{"buffer":27,"lodash":113}],9:[function(require,module,exports){
+'use strict';
+
+var debug = require('debug')('nmock.common.normalize-request-options');
+
+/**
+ * Normalizes the request options so that it always has `host` property.
+ *
+ * @param  {Object} options - a parsed options object of the request
+ */
+function normalizeRequestOptions(options) {
+    options.proto = options.proto || (options._https_ ? 'https' : 'http');
+    options.port = options.port || (options.proto === 'http' ? 80 : 443);
+    if (options.host) {
+        debug('options.host:', options.host);
+        if (!options.hostname) {
+            if (options.host.split(':').length == 2) {
+                options.hostname = options.host.split(':')[0];
+            } else {
+                options.hostname = options.host;
+            }
+        }
+    }
+    debug('options.hostname in the end: %j', options.hostname);
+    options.host = (options.hostname || 'localhost') + ':' + options.port;
+    debug('options.host in the end: %j', options.host);
+
+    /// lowercase host names
+    ['hostname', 'host'].forEach(function (attr) {
+        if (options[attr]) {
+            options[attr] = options[attr].toLowerCase();
+        }
+    });
+
+    return options;
+}
+
+module.exports = normalizeRequestOptions;
+},{"debug":106}],10:[function(require,module,exports){
+'use strict';
+
+var debug = require('debug')('nmock.common.overriden-requests');
+var http = require('http');
+var https = require('https');
+var _ = require('lodash');
 
 //  Array where all information about all the overridden requests are held.
 var requestOverride = [];
@@ -409,227 +575,139 @@ var requestOverride = [];
  *   - options - the options of the issued request
  *   - callback - the callback of the issued request
  */
-var overrideRequests = function overrideRequests(newRequest) {
-  debug('overriding requests');
+function overrideRequests(newRequest) {
+    debug('overriding requests');
 
-  ['http', 'https'].forEach(function (proto) {
-    debug('- overriding request for', proto);
+    ['http', 'https'].forEach(function (proto) {
+        debug('- overriding request for', proto);
 
-    var moduleName = proto,
-        // 1 to 1 match of protocol and module is fortunate :)
-    module = {
-      http: require('http'),
-      https: require('https')
-    }[moduleName],
-        overriddenRequest = module.request;
+        var moduleName = proto;
+        var module = {
+            http: http,
+            https: https
+        }[moduleName];
 
-    if (requestOverride[moduleName]) {
-      throw new Error('Module\'s request already overridden for ' + moduleName + ' protocol.');
-    }
+        var overriddenRequest = module.request;
 
-    //  Store the properties of the overridden request so that it can be restored later on.
-    requestOverride[moduleName] = {
-      module: module,
-      request: overriddenRequest
-    };
+        if (requestOverride[moduleName]) {
+            throw new Error('Module\'s request already overridden for ' + moduleName + ' protocol.');
+        }
 
-    module.request = function (options, callback) {
-      // debug('request options:', options);
-      return newRequest(proto, overriddenRequest.bind(module), options, callback);
-    };
+        //  Store the properties of the overridden request so that it can be restored later on.
+        requestOverride[moduleName] = {
+            module: module,
+            request: overriddenRequest
+        };
 
-    debug('- overridden request for', proto);
-  });
-};
+        module.request = function (options, callback) {
+            return newRequest(proto, overriddenRequest.bind(module), options, callback);
+        };
+
+        debug('- overridden request for', proto);
+    });
+}
 
 /**
  * Restores `request` function of `http` and `https` modules to values they
  * held before they were overridden by us.
  */
-var restoreOverriddenRequests = function restoreOverriddenRequests() {
-  debug('restoring requests');
+function restoreOverriddenRequests() {
+    debug('restoring requests');
 
-  //  Restore any overridden requests.
-  _(requestOverride).keys().each(function (proto) {
-    debug('- restoring request for', proto);
+    //  Restore any overridden requests.
+    _(requestOverride).keys().each(function (proto) {
+        debug('- restoring request for', proto);
 
-    var override = requestOverride[proto];
-    if (override) {
-      override.module.request = override.request;
-      debug('- restored request for', proto);
-    }
-  });
-  requestOverride = [];
-};
-
-function stringifyRequest(options, body) {
-  var method = options.method || 'GET';
-
-  if (body && typeof body !== 'string') {
-    body = body.toString();
-  }
-
-  var port = options.port;
-  if (!port) port = options.proto == 'https' ? '443' : '80';
-
-  if (options.proto == 'https' && port == '443' || options.proto == 'http' && port == '80') {
-    port = '';
-  }
-
-  if (port) port = ':' + port;
-
-  return method + ' ' + options.proto + '://' + options.hostname + port + options.path + ' ' + body;
+        var override = requestOverride[proto];
+        if (override) {
+            override.module.request = override.request;
+            debug('- restored request for', proto);
+        }
+    });
+    requestOverride = [];
 }
 
-function isContentEncoded(headers) {
-  var contentEncoding = _.get(headers, 'content-encoding');
-  return _.isString(contentEncoding) && contentEncoding !== '';
-}
-
-function isJSONContent(headers) {
-  var contentType = _.get(headers, 'content-type');
-  if (Array.isArray(contentType)) {
-    contentType = contentType[0];
-  }
-  contentType = (contentType || '').toLocaleLowerCase();
-
-  return contentType === 'application/json';
-}
-
-var headersFieldNamesToLowerCase = function headersFieldNamesToLowerCase(headers) {
-  if (!_.isObject(headers)) {
-    return headers;
-  }
-
-  //  For each key in the headers, delete its value and reinsert it with lower-case key.
-  //  Keys represent headers field names.
-  var lowerCaseHeaders = {};
-  _.forOwn(headers, function (fieldVal, fieldName) {
-    var lowerCaseFieldName = fieldName.toLowerCase();
-    if (!_.isUndefined(lowerCaseHeaders[lowerCaseFieldName])) {
-      throw new Error('Failed to convert header keys to lower case due to field name conflict: ' + lowerCaseFieldName);
-    }
-    lowerCaseHeaders[lowerCaseFieldName] = fieldVal;
-  });
-
-  return lowerCaseHeaders;
-};
-
-var headersFieldsArrayToLowerCase = function headersFieldsArrayToLowerCase(headers) {
-  return _.uniq(_.map(headers, function (fieldName) {
-    return fieldName.toLowerCase();
-  }));
-};
-
-/**
- * Deletes the given `fieldName` property from `headers` object by performing
- * case-insensitive search through keys.
- *
- * @headers   {Object} headers - object of header field names and values
- * @fieldName {String} field name - string with the case-insensitive field name
- */
-var deleteHeadersField = function deleteHeadersField(headers, fieldNameToDelete) {
-
-  if (!_.isObject(headers) || !_.isString(fieldNameToDelete)) {
-    return;
-  }
-
-  var lowerCaseFieldNameToDelete = fieldNameToDelete.toLowerCase();
-
-  //  Search through the headers and delete all values whose field name matches the given field name.
-  _(headers).keys().each(function (fieldName) {
-    var lowerCaseFieldName = fieldName.toLowerCase();
-    if (lowerCaseFieldName === lowerCaseFieldNameToDelete) {
-      delete headers[fieldName];
-      //  We don't stop here but continue in order to remove *all* matching field names
-      //  (even though if seen regorously there shouldn't be any)
-    }
-  });
-};
+module.exports.overrideRequests = overrideRequests;
+module.exports.restoreOverriddenRequests = restoreOverriddenRequests;
+},{"debug":106,"http":57,"https":32,"lodash":113}],11:[function(require,module,exports){
+'use strict';
 
 function percentDecode(str) {
-  try {
-    return decodeURIComponent(str.replace(/\+/g, ' '));
-  } catch (e) {
-    return str;
-  }
+    try {
+        return decodeURIComponent(str.replace(/\+/g, ' '));
+    } catch (e) {
+        return str;
+    }
 }
 
 function percentEncode(str) {
-  return encodeURIComponent(str).replace(/[!'()*]/g, function (c) {
-    return '%' + c.charCodeAt(0).toString(16).toUpperCase();
-  });
+    return encodeURIComponent(str).replace(/[!'()*]/g, function (c) {
+        return '%' + c.charCodeAt(0).toString(16).toUpperCase();
+    });
 }
 
-function matchStringOrRegexp(target, pattern) {
-  if (pattern instanceof RegExp) {
-    return target.toString().match(pattern);
-  } else {
-    return target === pattern;
-  }
+module.exports.percentDecode = percentDecode;
+module.exports.percentEncode = percentEncode;
+},{}],12:[function(require,module,exports){
+'use strict';
+
+function stringifyRequest(options, body) {
+    var method = options.method;
+    var proto = options.proto;
+    var hostname = options.hostname;
+    var path = options.path;
+    var port = options.port;
+
+
+    method = method || 'GET';
+
+    if (body && typeof body !== 'string') {
+        body = body.toString();
+    }
+
+    if (!port) {
+        port = proto == 'https' ? '443' : '80';
+    }
+
+    if (proto == 'https' && port == '443' || proto == 'http' && port == '80') {
+        port = '';
+    }
+
+    if (port) {
+        port = ':' + port;
+    }
+
+    return method + ' ' + proto + '://' + hostname + port + path + ' ' + body;
 }
 
-// return [newKey, newValue]
-function formatQueryValue(key, value, options) {
-  switch (true) {
-    case _.isNumber(value): // fall-though
-    case _.isBoolean(value):
-      value = value.toString();
-      break;
-    case _.isUndefined(value): // fall-though
-    case _.isNull(value):
-      value = '';
-      break;
-    case _.isString(value):
-      if (options.encodedQueryParams) {
-        value = percentDecode(value);
-      }
-      break;
-    case value instanceof RegExp:
-      break;
-    case _.isArray(value):
-      var tmpArray = new Array(value.length);
-      for (var i = 0; i < value.length; ++i) {
-        tmpArray[i] = formatQueryValue(i, value[i], options)[1];
-      }
-      value = tmpArray;
-      break;
-    case _.isObject(value):
-      var tmpObj = {};
-      _.forOwn(value, function (subVal, subKey) {
-        var subPair = formatQueryValue(subKey, subVal, options);
-        tmpObj[subPair[0]] = subPair[1];
-      });
-      value = tmpObj;
-      break;
-  }
+module.exports = stringifyRequest;
+},{}],13:[function(require,module,exports){
+'use strict';
 
-  if (options.encodedQueryParams) key = percentDecode(key);
-  return [key, value];
+var _require = require('lodash');
+
+var isString = _require.isString;
+var get = _require.get;
+
+
+function isContentEncoded(headers) {
+    var contentEncoding = get(headers, 'content-encoding');
+    return isString(contentEncoding) && contentEncoding !== '';
 }
 
-function isStream(obj) {
-  return obj && typeof a !== 'string' && !Buffer.isBuffer(obj) && _.isFunction(obj.setEncoding);
+function isJSONContent(headers) {
+    var contentType = get(headers, 'content-type');
+    if (Array.isArray(contentType)) {
+        contentType = contentType[0];
+    }
+    contentType = (contentType || '').toLocaleLowerCase();
+
+    return contentType === 'application/json';
 }
 
-exports.normalizeRequestOptions = normalizeRequestOptions;
-exports.isBinaryBuffer = isBinaryBuffer;
-exports.mergeChunks = mergeChunks;
-exports.overrideRequests = overrideRequests;
-exports.restoreOverriddenRequests = restoreOverriddenRequests;
-exports.stringifyRequest = stringifyRequest;
-exports.isContentEncoded = isContentEncoded;
-exports.isJSONContent = isJSONContent;
-exports.headersFieldNamesToLowerCase = headersFieldNamesToLowerCase;
-exports.headersFieldsArrayToLowerCase = headersFieldsArrayToLowerCase;
-exports.deleteHeadersField = deleteHeadersField;
-exports.percentEncode = percentEncode;
-exports.percentDecode = percentDecode;
-exports.matchStringOrRegexp = matchStringOrRegexp;
-exports.formatQueryValue = formatQueryValue;
-exports.isStream = isStream;
-}).call(this,require("buffer").Buffer)
-},{"buffer":17,"debug":96,"http":47,"https":22,"lodash":103}],4:[function(require,module,exports){
+module.exports.isContentEncoded = isContentEncoded;
+module.exports.isJSONContent = isJSONContent;
+},{"lodash":113}],14:[function(require,module,exports){
 (function (Buffer,process){
 'use strict';
 
@@ -643,7 +721,7 @@ function _inherits(subClass, superClass) { if (typeof superClass !== "function" 
 
 var Transform = require('stream').Transform;
 var EventEmitter = require('events').EventEmitter;
-var common = require('./common');
+var isStream = require('./common/is-stream');
 
 var FakeTransformStream = function (_EventEmitter) {
     _inherits(FakeTransformStream, _EventEmitter);
@@ -704,7 +782,7 @@ var DelayedBody = function (_Transform) {
         var data = '';
         var ended = false;
 
-        if (common.isStream(body)) {
+        if (isStream(body)) {
             body.on('data', function (chunk) {
                 return data += Buffer.isBuffer(chunk) ? chunk.toString() : chunk;
             });
@@ -716,7 +794,7 @@ var DelayedBody = function (_Transform) {
         }
 
         setTimeout(function () {
-            if (common.isStream(body) && !ended) {
+            if (isStream(body) && !ended) {
                 body.once('end', function () {
                     return _this4.end(data);
                 });
@@ -740,13 +818,13 @@ var DelayedBody = function (_Transform) {
 
 module.exports = DelayedBody;
 }).call(this,{"isBuffer":require("../node_modules/browserify/node_modules/insert-module-globals/node_modules/is-buffer/index.js")},require('_process'))
-},{"../node_modules/browserify/node_modules/insert-module-globals/node_modules/is-buffer/index.js":24,"./common":3,"_process":26,"events":21,"stream":46}],5:[function(require,module,exports){
+},{"../node_modules/browserify/node_modules/insert-module-globals/node_modules/is-buffer/index.js":34,"./common/is-stream":6,"_process":36,"events":31,"stream":56}],15:[function(require,module,exports){
 'use strict';
 
 var EventEmitter = require('events').EventEmitter;
 
 module.exports = new EventEmitter();
-},{"events":21}],6:[function(require,module,exports){
+},{"events":31}],16:[function(require,module,exports){
 (function (process){
 'use strict';
 
@@ -754,8 +832,15 @@ module.exports = new EventEmitter();
  * @module nmock/intercepts
  */
 
+var normalizeRequestOptions = require('./common/normalize-request-options');
+var matchStringOrRegexp = require('./common/match-string-or-regexp');
+
+var _require = require('./common/overriden-requests');
+
+var overrideRequests = _require.overrideRequests;
+
+
 var RequestOverrider = require('./request_overrider'),
-    common = require('./common'),
     url = require('url'),
     inherits = require('util').inherits,
     Interceptor = require('./interceptor'),
@@ -816,7 +901,7 @@ function enableNetConnect(matcher) {
 }
 
 function isEnabledForNetConnect(options) {
-  common.normalizeRequestOptions(options);
+  normalizeRequestOptions(options);
 
   var enabled = allowNetConnect && allowNetConnect.test(options.host);
   debug('Net connect', enabled ? '' : 'not', 'enabled for', options.host);
@@ -878,7 +963,7 @@ function removeAll() {
 function interceptorsFor(options) {
   var basePath, matchingInterceptor;
 
-  common.normalizeRequestOptions(options);
+  normalizeRequestOptions(options);
 
   debug('interceptors for %j', options.host);
 
@@ -905,7 +990,7 @@ function interceptorsFor(options) {
       }
     });
 
-    if (!matchingInterceptor && common.matchStringOrRegexp(basePath, interceptor.key)) {
+    if (!matchingInterceptor && matchStringOrRegexp(basePath, interceptor.key)) {
       matchingInterceptor = interceptor.scopes;
       // false to short circuit the .each
       return false;
@@ -927,7 +1012,7 @@ function removeInterceptor(options) {
   } else {
     proto = options.proto ? options.proto : 'http';
 
-    common.normalizeRequestOptions(options);
+    normalizeRequestOptions(options);
     baseUrl = proto + '://' + options.host;
     method = options.method && options.method.toUpperCase() || 'GET';
     key = method + ' ' + baseUrl + (options.path || '/');
@@ -1068,7 +1153,7 @@ function activate() {
 
   // ----- Overriding http.request and https.request:
 
-  common.overrideRequests(function (proto, overriddenRequest, options, callback) {
+  overrideRequests(function (proto, overriddenRequest, options, callback) {
     //  NOTE: overriddenRequest is already bound to its module.
     var req, res;
 
@@ -1140,13 +1225,25 @@ module.exports.disableNetConnect = disableNetConnect;
 module.exports.overrideClientRequest = overrideClientRequest;
 module.exports.restoreOverriddenClientRequest = restoreOverriddenClientRequest;
 }).call(this,require('_process'))
-},{"./common":3,"./global_emitter":5,"./interceptor":7,"./request_overrider":11,"_process":26,"debug":96,"events":21,"http":47,"lodash":103,"timers":54,"url":55,"util":58}],7:[function(require,module,exports){
+},{"./common/match-string-or-regexp":7,"./common/normalize-request-options":9,"./common/overriden-requests":10,"./global_emitter":15,"./interceptor":17,"./request_overrider":21,"_process":36,"debug":106,"events":31,"http":57,"lodash":113,"timers":64,"url":65,"util":68}],17:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
+var _require = require('./common/type-content');
+
+var isContentEncoded = _require.isContentEncoded;
+
+var _require2 = require('./common/headers');
+
+var headersFieldNamesToLowerCase = _require2.headersFieldNamesToLowerCase;
+var headersFieldsArrayToLowerCase = _require2.headersFieldsArrayToLowerCase;
+
+var matchStringOrRegexp = require('./common/match-string-or-regexp');
+var formatQueryValue = require('./common/format-query-value');
+var isStream = require('./common/is-stream');
+
 var mixin = require('./mixin'),
     matchBody = require('./match_body'),
-    common = require('./common'),
     _ = require('lodash'),
     debug = require('debug')('nmock.scope'),
     stringify = require('json-stringify-safe'),
@@ -1178,8 +1275,8 @@ function Interceptor(scope, uri, method, requestBody, interceptorOptions) {
     this._requestBody = requestBody;
 
     //  We use lower-case header field names throughout nmock.
-    this.reqheaders = common.headersFieldNamesToLowerCase(scope.scopeOptions && scope.scopeOptions.reqheaders || {});
-    this.badheaders = common.headersFieldsArrayToLowerCase(scope.scopeOptions && scope.scopeOptions.badheaders || []);
+    this.reqheaders = headersFieldNamesToLowerCase(scope.scopeOptions && scope.scopeOptions.reqheaders || {});
+    this.badheaders = headersFieldsArrayToLowerCase(scope.scopeOptions && scope.scopeOptions.badheaders || []);
 
     this.delayInMs = 0;
     this.delayConnectionInMs = 0;
@@ -1203,7 +1300,7 @@ Interceptor.prototype.reply = function reply(statusCode, body, headers) {
     this.statusCode = statusCode;
 
     //  We use lower-case headers throughout nmock.
-    headers = common.headersFieldNamesToLowerCase(headers);
+    headers = headersFieldNamesToLowerCase(headers);
 
     _.defaults(this.options, this.scope.scopeOptions);
 
@@ -1234,8 +1331,8 @@ Interceptor.prototype.reply = function reply(statusCode, body, headers) {
 
     //  If the content is not encoded we may need to transform the response body.
     //  Otherwise we leave it as it is.
-    if (!common.isContentEncoded(headers)) {
-        if (body && typeof body !== 'string' && typeof body !== 'function' && !Buffer.isBuffer(body) && !common.isStream(body)) {
+    if (!isContentEncoded(headers)) {
+        if (body && typeof body !== 'string' && typeof body !== 'function' && !Buffer.isBuffer(body) && !isStream(body)) {
             try {
                 body = stringify(body);
                 if (!this.headers) {
@@ -1303,7 +1400,7 @@ Interceptor.prototype.reqheaderMatches = function reqheaderMatches(options, key)
     if (reqHeader && header) {
         if (_.isFunction(reqHeader)) {
             return reqHeader(header);
-        } else if (common.matchStringOrRegexp(header, reqHeader)) {
+        } else if (matchStringOrRegexp(header, reqHeader)) {
             return true;
         }
     }
@@ -1341,7 +1438,7 @@ Interceptor.prototype.match = function match(options, body, hostNameOnly) {
         if (_.isFunction(header.value)) {
             return header.value(options.getHeader(header.name));
         }
-        return common.matchStringOrRegexp(options.getHeader(header.name), header.value);
+        return matchStringOrRegexp(options.getHeader(header.name), header.value);
     };
 
     if (!this.scope.matchHeaders.every(checkHeaders) || !this.interceptorMatchHeaders.every(checkHeaders)) {
@@ -1413,11 +1510,11 @@ Interceptor.prototype.match = function match(options, body, hostNameOnly) {
                         if (val === undefined || expVal === undefined) {
                             isMatch = false;
                         } else if (expVal instanceof RegExp) {
-                            isMatch = common.matchStringOrRegexp(val, expVal);
+                            isMatch = matchStringOrRegexp(val, expVal);
                         } else if (_.isArray(expVal) || _.isObject(expVal)) {
                             isMatch = _.isEqual(val, expVal);
                         } else {
-                            isMatch = common.matchStringOrRegexp(val, expVal);
+                            isMatch = matchStringOrRegexp(val, expVal);
                         }
                         matchQueries = matchQueries && !!isMatch;
                     });
@@ -1433,7 +1530,7 @@ Interceptor.prototype.match = function match(options, body, hostNameOnly) {
     if (typeof this.uri === 'function') {
         matches = matchQueries && method.toUpperCase() + ' ' + proto + '://' + options.host === this.baseUri && this.uri.call(this, path);
     } else {
-        matches = method === this.method && common.matchStringOrRegexp(matchKey, this.basePath) && common.matchStringOrRegexp(path, this.path) && matchQueries;
+        matches = method === this.method && matchStringOrRegexp(matchKey, this.basePath) && matchStringOrRegexp(path, this.path) && matchQueries;
     }
 
     // special logger for query()
@@ -1463,7 +1560,7 @@ Interceptor.prototype.matchIndependentOfBody = function matchIndependentOfBody(o
     }
 
     var checkHeaders = function checkHeaders(header) {
-        return options.getHeader && common.matchStringOrRegexp(options.getHeader(header.name), header.value);
+        return options.getHeader && matchStringOrRegexp(options.getHeader(header.name), header.value);
     };
 
     if (!this.scope.matchHeaders.every(checkHeaders) || !this.interceptorMatchHeaders.every(checkHeaders)) {
@@ -1530,7 +1627,7 @@ Interceptor.prototype.query = function query(queries) {
     for (var q in queries) {
         if (_.isUndefined(this.queries[q])) {
             var value = queries[q];
-            var formatedPair = common.formatQueryValue(q, value, this.scope.scopeOptions);
+            var formatedPair = formatQueryValue(q, value, this.scope.scopeOptions);
             this.queries[formatedPair[0]] = formatedPair[1];
         }
     }
@@ -1653,7 +1750,7 @@ Interceptor.prototype.socketDelay = function socketDelay(ms) {
     return this;
 };
 }).call(this,require("buffer").Buffer)
-},{"./common":3,"./match_body":8,"./mixin":9,"buffer":17,"debug":96,"fs":14,"json-stringify-safe":102,"lodash":103,"qs":106,"util":58}],8:[function(require,module,exports){
+},{"./common/format-query-value":3,"./common/headers":4,"./common/is-stream":6,"./common/match-string-or-regexp":7,"./common/type-content":13,"./match_body":18,"./mixin":19,"buffer":27,"debug":106,"fs":24,"json-stringify-safe":112,"lodash":113,"qs":116,"util":68}],18:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -1728,7 +1825,7 @@ function deepEqualExtended(spec, body) {
   return deepEqual(spec, body, { strict: true });
 }
 }).call(this,{"isBuffer":require("../node_modules/browserify/node_modules/insert-module-globals/node_modules/is-buffer/index.js")})
-},{"../node_modules/browserify/node_modules/insert-module-globals/node_modules/is-buffer/index.js":24,"deep-equal":99,"querystring":30}],9:[function(require,module,exports){
+},{"../node_modules/browserify/node_modules/insert-module-globals/node_modules/is-buffer/index.js":34,"deep-equal":109,"querystring":40}],19:[function(require,module,exports){
 'use strict';
 
 var _ = require("lodash");
@@ -1748,15 +1845,33 @@ function mixin(a, b) {
 }
 
 module.exports = mixin;
-},{"lodash":103}],10:[function(require,module,exports){
+},{"lodash":113}],20:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
 var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol ? "symbol" : typeof obj; };
 
+var mergeChunks = require('./common/merge-chunks');
+
+var _require = require('./common/overriden-requests');
+
+var overrideRequests = _require.overrideRequests;
+var restoreOverriddenRequests = _require.restoreOverriddenRequests;
+
+var _require2 = require('./common/type-content');
+
+var isContentEncoded = _require2.isContentEncoded;
+
+var _require3 = require('./common/headers');
+
+var deleteHeadersField = _require3.deleteHeadersField;
+
+
 var inspect = require('util').inspect;
 var parse = require('url').parse;
-var common = require('./common');
+var normalizeRequestOptions = require('./common/normalize-request-options');
+var isBinaryBuffer = require('./common/is-binary-buffer');
+
 var intercept = require('./intercept');
 var debug = require('debug')('nmock.recorder');
 var _ = require('lodash');
@@ -1769,7 +1884,7 @@ var outputs = [];
 
 function getScope(options) {
 
-  common.normalizeRequestOptions(options);
+  normalizeRequestOptions(options);
 
   var scope = [];
   if (options._https_) {
@@ -1799,7 +1914,7 @@ var getBodyFromChunks = function getBodyFromChunks(chunks, headers) {
   //  If we have headers and there is content-encoding it means that
   //  the body shouldn't be merged but instead persisted as an array
   //  of hex strings so that the responses can be mocked one by one.
-  if (common.isContentEncoded(headers)) {
+  if (isContentEncoded(headers)) {
     return _.map(chunks, function (chunk) {
       if (!Buffer.isBuffer(chunk)) {
         if (typeof chunk === 'string') {
@@ -1813,14 +1928,14 @@ var getBodyFromChunks = function getBodyFromChunks(chunks, headers) {
     });
   }
 
-  var mergedBuffer = common.mergeChunks(chunks);
+  var mergedBuffer = mergeChunks(chunks);
 
   //  The merged buffer can be one of three things:
   //    1.  A binary buffer which then has to be recorded as a hex string.
   //    2.  A string buffer which represents a JSON object.
   //    3.  A string buffer which doesn't represent a JSON object.
 
-  if (common.isBinaryBuffer(mergedBuffer)) {
+  if (isBinaryBuffer(mergedBuffer)) {
     return mergedBuffer.toString('hex');
   } else {
     var maybeStringifiedJson = mergedBuffer.toString('utf8');
@@ -1950,12 +2065,12 @@ function record(rec_options) {
   //  we restore any requests that may have been overridden by other parts of NMock (e.g. intercept)
   //  NOTE: This is hacky as hell but it keeps the backward compatibility *and* allows correct
   //    behavior in the face of other modules also overriding ClientRequest.
-  common.restoreOverriddenRequests();
+  restoreOverriddenRequests();
   //  We restore ClientRequest as it messes with recording of modules that also override ClientRequest (e.g. xhr2)
   intercept.restoreOverriddenClientRequest();
 
   //  We override the requests so that we can save information on them before executing.
-  common.overrideRequests(function (proto, overriddenRequest, options, callback) {
+  overrideRequests(function (proto, overriddenRequest, options, callback) {
 
     var bodyChunks = [];
 
@@ -1994,7 +2109,7 @@ function record(rec_options) {
           if (out.reqheaders) {
             //  We never record user-agent headers as they are worse than useless -
             //  they actually make testing more difficult without providing any benefit (see README)
-            common.deleteHeadersField(out.reqheaders, 'user-agent');
+            deleteHeadersField(out.reqheaders, 'user-agent');
 
             //  Remove request headers completely unless it was explicitly enabled by the user (see README)
             if (!enable_reqheaders_recording) {
@@ -2090,7 +2205,7 @@ function record(rec_options) {
 function restore() {
   debug(currentRecordingId, 'restoring all the overridden http/https properties');
 
-  common.restoreOverriddenRequests();
+  restoreOverriddenRequests();
   intercept.restoreOverriddenClientRequest();
   recordingInProgress = false;
 }
@@ -2106,7 +2221,7 @@ exports.outputs = function () {
 exports.restore = restore;
 exports.clear = clear;
 }).call(this,require("buffer").Buffer)
-},{"./common":3,"./intercept":6,"buffer":17,"debug":96,"lodash":103,"stream":46,"url":55,"util":58}],11:[function(require,module,exports){
+},{"./common/headers":4,"./common/is-binary-buffer":5,"./common/merge-chunks":8,"./common/normalize-request-options":9,"./common/overriden-requests":10,"./common/type-content":13,"./intercept":16,"buffer":27,"debug":106,"lodash":113,"stream":56,"url":65,"util":68}],21:[function(require,module,exports){
 (function (process,Buffer){
 'use strict';
 
@@ -2114,22 +2229,37 @@ var _createClass = function () { function defineProperties(target, props) { for 
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
-var _require = require('events');
+var mergeChunks = require('./common/merge-chunks');
+var stringifyRequest = require('./common/stringify-request');
 
-var EventEmitter = _require.EventEmitter;
+var _require = require('./common/type-content');
+
+var isContentEncoded = _require.isContentEncoded;
+var isJSONContent = _require.isJSONContent;
+
+var _require2 = require('./common/headers');
+
+var headersFieldNamesToLowerCase = _require2.headersFieldNamesToLowerCase;
+
+var isStream = require('./common/is-stream');
+
+var _require3 = require('events');
+
+var EventEmitter = _require3.EventEmitter;
 
 var http = require('http');
 var propagate = require('propagate');
 var DelayedBody = require('./delayed_body');
 var IncomingMessage = http.IncomingMessage;
 var ClientRequest = http.ClientRequest;
-var common = require('./common');
+
 var Socket = require('./socket');
 var _ = require('lodash');
 var debug = require('debug')('nmock.request_overrider');
 var timers = require('timers');
 var ReadableStream = require('stream').Readable;
 var globalEmitter = require('./global_emitter');
+var isBinaryBuffer = require('./common/is-binary-buffer');
 
 function _getHeader(request, name) {
     if (!request._headers) {
@@ -2237,7 +2367,7 @@ var RequestOverrider = function () {
 
             if (headers) {
                 // We use lower-case header field names throught NMock.
-                headers = common.headersFieldNamesToLowerCase(headers);
+                headers = headersFieldNamesToLowerCase(headers);
 
                 _.forOwn(headers, function (val, key) {
                     setHeader(_this._req, key, val);
@@ -2382,7 +2512,7 @@ var RequestOverrider = function () {
                     return;
                 }
 
-                var err = new Error('NMock: No match for request ' + common.stringifyRequest(this._options, this.getRequestBody()));
+                var err = new Error('NMock: No match for request ' + stringifyRequest(this._options, this.getRequestBody()));
 
                 err.statusCode = err.status = 404;
                 this.emitError(err);
@@ -2442,7 +2572,7 @@ var RequestOverrider = function () {
     }, {
         key: 'getRequestBodyBuffer',
         value: function getRequestBodyBuffer() {
-            return common.mergeChunks(this._requestBodyBuffers);
+            return mergeChunks(this._requestBodyBuffers);
         }
     }, {
         key: 'getRequestBody',
@@ -2450,7 +2580,7 @@ var RequestOverrider = function () {
             // When request body is a binary buffer we internally use in its hexadecimal representation.
 
             var requestBodyBuffer = this.getRequestBodyBuffer();
-            var isBinaryRequestBodyBuffer = common.isBinaryBuffer(requestBodyBuffer);
+            var isBinaryRequestBodyBuffer = isBinaryBuffer(requestBodyBuffer);
 
             return isBinaryRequestBodyBuffer ? requestBodyBuffer.toString('hex') : requestBodyBuffer.toString('utf8');
         }
@@ -2458,7 +2588,7 @@ var RequestOverrider = function () {
         key: 'isRequestBodyBufferBinary',
         value: function isRequestBodyBufferBinary() {
             var requestBodyBuffer = this.getRequestBodyBuffer();
-            return common.isBinaryBuffer(requestBodyBuffer);
+            return isBinaryBuffer(requestBodyBuffer);
         }
     }, {
         key: 'canDoUnmockedRequest',
@@ -2551,7 +2681,7 @@ var RequestOverrider = function () {
             if (typeof interceptor.body === 'function') {
                 var requestBody = this.getRequestBody();
 
-                if (requestBody && common.isJSONContent(this._options.headers)) {
+                if (requestBody && isJSONContent(this._options.headers)) {
                     requestBody = JSON.parse(requestBody);
                 }
 
@@ -2566,7 +2696,7 @@ var RequestOverrider = function () {
             if (typeof interceptor.body === 'function') {
                 var requestBody = this.getRequestBody();
 
-                if (requestBody && common.isJSONContent(this._options.headers)) {
+                if (requestBody && isJSONContent(this._options.headers)) {
                     requestBody = JSON.parse(requestBody);
                 }
 
@@ -2577,7 +2707,7 @@ var RequestOverrider = function () {
                 return requestBody;
             }
 
-            if (!common.isContentEncoded(this._response.headers) || common.isStream(interceptor.body)) {
+            if (!isContentEncoded(this._response.headers) || isStream(interceptor.body)) {
                 var responseBody = interceptor.body;
 
                 //  If the request was binary then we assume that the response will be binary as well.
@@ -2610,7 +2740,7 @@ var RequestOverrider = function () {
              buffer by buffer and not one single merged buffer)
              */
 
-            if (common.isContentEncoded(this._response.headers) && !common.isStream(interceptor.body)) {
+            if (isContentEncoded(this._response.headers) && !isStream(interceptor.body)) {
                 if (interceptor.delayInMs) {
                     //TODO: it should break execution of this.end()
                     this.emitError(new Error('Response delay is currently not supported with content-encoded responses.'));
@@ -2725,7 +2855,7 @@ var RequestOverrider = function () {
                 responseBody = new DelayedBody(interceptor.getTotalDelay(), responseBody);
             }
 
-            if (common.isStream(responseBody)) {
+            if (isStream(responseBody)) {
                 debug('response body is a stream');
                 responseBody.pause();
                 responseBody.on('data', function (d) {
@@ -2793,7 +2923,7 @@ var RequestOverrider = function () {
                 this._req.emit('response', response);
             }
 
-            if (common.isStream(responseBody)) {
+            if (isStream(responseBody)) {
                 debug('resuming response stream');
                 responseBody.resume();
 
@@ -2849,15 +2979,20 @@ var RequestOverrider = function () {
 
 module.exports = RequestOverrider;
 }).call(this,require('_process'),require("buffer").Buffer)
-},{"./common":3,"./delayed_body":4,"./global_emitter":5,"./socket":13,"_process":26,"buffer":17,"debug":96,"events":21,"http":47,"lodash":103,"propagate":105,"stream":46,"timers":54}],12:[function(require,module,exports){
+},{"./common/headers":4,"./common/is-binary-buffer":5,"./common/is-stream":6,"./common/merge-chunks":8,"./common/stringify-request":12,"./common/type-content":13,"./delayed_body":14,"./global_emitter":15,"./socket":23,"_process":36,"buffer":27,"debug":106,"events":31,"http":57,"lodash":113,"propagate":115,"stream":56,"timers":64}],22:[function(require,module,exports){
 'use strict';
 
 /* jshint strict:false */
 /**
  * @module nmock/scope
  */
+
+var _require = require('./common/headers');
+
+var headersFieldNamesToLowerCase = _require.headersFieldNamesToLowerCase;
+
+
 var globalIntercept = require('./intercept'),
-    common = require('./common'),
     assert = require('assert'),
     url = require('url'),
     _ = require('lodash'),
@@ -3047,7 +3182,7 @@ Scope.prototype.matchHeader = function matchHeader(name, value) {
 };
 
 Scope.prototype.defaultReplyHeaders = function defaultReplyHeaders(headers) {
-  this._defaultReplyHeaders = common.headersFieldNamesToLowerCase(headers);
+  this._defaultReplyHeaders = headersFieldNamesToLowerCase(headers);
   return this;
 };
 
@@ -3202,7 +3337,7 @@ module.exports = extend(startScope, {
   define: define,
   emitter: globalEmitter
 });
-},{"./common":3,"./global_emitter":5,"./intercept":6,"./interceptor":7,"assert":15,"debug":96,"events":21,"fs":14,"json-stringify-safe":102,"lodash":103,"url":55,"util":58}],13:[function(require,module,exports){
+},{"./common/headers":4,"./global_emitter":15,"./intercept":16,"./interceptor":17,"assert":25,"debug":106,"events":31,"fs":24,"json-stringify-safe":112,"lodash":113,"url":65,"util":68}],23:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -3293,9 +3428,9 @@ function noop() {}
 
 module.exports = Socket;
 }).call(this,require("buffer").Buffer)
-},{"buffer":17,"debug":96,"events":21}],14:[function(require,module,exports){
+},{"buffer":27,"debug":106,"events":31}],24:[function(require,module,exports){
 
-},{}],15:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 // http://wiki.commonjs.org/wiki/Unit_Testing/1.0
 //
 // THIS IS NOT TESTED NOR LIKELY TO WORK OUTSIDE V8!
@@ -3656,9 +3791,9 @@ var objectKeys = Object.keys || function (obj) {
   return keys;
 };
 
-},{"util/":58}],16:[function(require,module,exports){
-arguments[4][14][0].apply(exports,arguments)
-},{"dup":14}],17:[function(require,module,exports){
+},{"util/":68}],26:[function(require,module,exports){
+arguments[4][24][0].apply(exports,arguments)
+},{"dup":24}],27:[function(require,module,exports){
 (function (global){
 /*!
  * The buffer module from node.js, for the browser.
@@ -5373,7 +5508,7 @@ function isnan (val) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"base64-js":18,"ieee754":19,"isarray":20}],18:[function(require,module,exports){
+},{"base64-js":28,"ieee754":29,"isarray":30}],28:[function(require,module,exports){
 'use strict'
 
 exports.toByteArray = toByteArray
@@ -5484,7 +5619,7 @@ function fromByteArray (uint8) {
   return parts.join('')
 }
 
-},{}],19:[function(require,module,exports){
+},{}],29:[function(require,module,exports){
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
   var e, m
   var eLen = nBytes * 8 - mLen - 1
@@ -5570,14 +5705,14 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128
 }
 
-},{}],20:[function(require,module,exports){
+},{}],30:[function(require,module,exports){
 var toString = {}.toString;
 
 module.exports = Array.isArray || function (arr) {
   return toString.call(arr) == '[object Array]';
 };
 
-},{}],21:[function(require,module,exports){
+},{}],31:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -5881,7 +6016,7 @@ function isUndefined(arg) {
   return arg === void 0;
 }
 
-},{}],22:[function(require,module,exports){
+},{}],32:[function(require,module,exports){
 var http = require('http');
 
 var https = module.exports;
@@ -5897,7 +6032,7 @@ https.request = function (params, cb) {
     return http.request.call(this, params, cb);
 }
 
-},{"http":47}],23:[function(require,module,exports){
+},{"http":57}],33:[function(require,module,exports){
 if (typeof Object.create === 'function') {
   // implementation from standard node.js 'util' module
   module.exports = function inherits(ctor, superCtor) {
@@ -5922,7 +6057,7 @@ if (typeof Object.create === 'function') {
   }
 }
 
-},{}],24:[function(require,module,exports){
+},{}],34:[function(require,module,exports){
 /**
  * Determine if an object is Buffer
  *
@@ -5941,7 +6076,7 @@ module.exports = function (obj) {
     ))
 }
 
-},{}],25:[function(require,module,exports){
+},{}],35:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -6169,7 +6304,7 @@ var substr = 'ab'.substr(-1) === 'b'
 ;
 
 }).call(this,require('_process'))
-},{"_process":26}],26:[function(require,module,exports){
+},{"_process":36}],36:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
@@ -6290,7 +6425,7 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],27:[function(require,module,exports){
+},{}],37:[function(require,module,exports){
 (function (global){
 /*! https://mths.be/punycode v1.4.1 by @mathias */
 ;(function(root) {
@@ -6827,7 +6962,7 @@ process.umask = function() { return 0; };
 }(this));
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],28:[function(require,module,exports){
+},{}],38:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -6913,7 +7048,7 @@ var isArray = Array.isArray || function (xs) {
   return Object.prototype.toString.call(xs) === '[object Array]';
 };
 
-},{}],29:[function(require,module,exports){
+},{}],39:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -7000,16 +7135,16 @@ var objectKeys = Object.keys || function (obj) {
   return res;
 };
 
-},{}],30:[function(require,module,exports){
+},{}],40:[function(require,module,exports){
 'use strict';
 
 exports.decode = exports.parse = require('./decode');
 exports.encode = exports.stringify = require('./encode');
 
-},{"./decode":28,"./encode":29}],31:[function(require,module,exports){
+},{"./decode":38,"./encode":39}],41:[function(require,module,exports){
 module.exports = require("./lib/_stream_duplex.js")
 
-},{"./lib/_stream_duplex.js":32}],32:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":42}],42:[function(require,module,exports){
 // a duplex stream is just a stream that is both readable and writable.
 // Since JS doesn't have multiple prototypal inheritance, this class
 // prototypally inherits from Readable, and then parasitically from
@@ -7085,7 +7220,7 @@ function forEach(xs, f) {
     f(xs[i], i);
   }
 }
-},{"./_stream_readable":34,"./_stream_writable":36,"core-util-is":38,"inherits":23,"process-nextick-args":40}],33:[function(require,module,exports){
+},{"./_stream_readable":44,"./_stream_writable":46,"core-util-is":48,"inherits":33,"process-nextick-args":50}],43:[function(require,module,exports){
 // a passthrough stream.
 // basically just the most minimal sort of Transform stream.
 // Every written chunk gets output as-is.
@@ -7112,7 +7247,7 @@ function PassThrough(options) {
 PassThrough.prototype._transform = function (chunk, encoding, cb) {
   cb(null, chunk);
 };
-},{"./_stream_transform":35,"core-util-is":38,"inherits":23}],34:[function(require,module,exports){
+},{"./_stream_transform":45,"core-util-is":48,"inherits":33}],44:[function(require,module,exports){
 (function (process){
 'use strict';
 
@@ -8008,7 +8143,7 @@ function indexOf(xs, x) {
   return -1;
 }
 }).call(this,require('_process'))
-},{"./_stream_duplex":32,"_process":26,"buffer":17,"buffer-shims":37,"core-util-is":38,"events":21,"inherits":23,"isarray":39,"process-nextick-args":40,"string_decoder/":53,"util":16}],35:[function(require,module,exports){
+},{"./_stream_duplex":42,"_process":36,"buffer":27,"buffer-shims":47,"core-util-is":48,"events":31,"inherits":33,"isarray":49,"process-nextick-args":50,"string_decoder/":63,"util":26}],45:[function(require,module,exports){
 // a transform stream is a readable/writable stream where you do
 // something with the data.  Sometimes it's called a "filter",
 // but that's not a great name for it, since that implies a thing where
@@ -8189,7 +8324,7 @@ function done(stream, er) {
 
   return stream.push(null);
 }
-},{"./_stream_duplex":32,"core-util-is":38,"inherits":23}],36:[function(require,module,exports){
+},{"./_stream_duplex":42,"core-util-is":48,"inherits":33}],46:[function(require,module,exports){
 (function (process){
 // A bit simpler than readable streams.
 // Implement an async ._write(chunk, encoding, cb), and it'll handle all
@@ -8718,7 +8853,7 @@ function CorkedRequest(state) {
   };
 }
 }).call(this,require('_process'))
-},{"./_stream_duplex":32,"_process":26,"buffer":17,"buffer-shims":37,"core-util-is":38,"events":21,"inherits":23,"process-nextick-args":40,"util-deprecate":41}],37:[function(require,module,exports){
+},{"./_stream_duplex":42,"_process":36,"buffer":27,"buffer-shims":47,"core-util-is":48,"events":31,"inherits":33,"process-nextick-args":50,"util-deprecate":51}],47:[function(require,module,exports){
 (function (global){
 'use strict';
 
@@ -8830,7 +8965,7 @@ exports.allocUnsafeSlow = function allocUnsafeSlow(size) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"buffer":17}],38:[function(require,module,exports){
+},{"buffer":27}],48:[function(require,module,exports){
 (function (Buffer){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -8941,9 +9076,9 @@ function objectToString(o) {
 }
 
 }).call(this,{"isBuffer":require("../../../../insert-module-globals/node_modules/is-buffer/index.js")})
-},{"../../../../insert-module-globals/node_modules/is-buffer/index.js":24}],39:[function(require,module,exports){
-arguments[4][20][0].apply(exports,arguments)
-},{"dup":20}],40:[function(require,module,exports){
+},{"../../../../insert-module-globals/node_modules/is-buffer/index.js":34}],49:[function(require,module,exports){
+arguments[4][30][0].apply(exports,arguments)
+},{"dup":30}],50:[function(require,module,exports){
 (function (process){
 'use strict';
 
@@ -8990,7 +9125,7 @@ function nextTick(fn, arg1, arg2, arg3) {
 }
 
 }).call(this,require('_process'))
-},{"_process":26}],41:[function(require,module,exports){
+},{"_process":36}],51:[function(require,module,exports){
 (function (global){
 
 /**
@@ -9061,10 +9196,10 @@ function config (name) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],42:[function(require,module,exports){
+},{}],52:[function(require,module,exports){
 module.exports = require("./lib/_stream_passthrough.js")
 
-},{"./lib/_stream_passthrough.js":33}],43:[function(require,module,exports){
+},{"./lib/_stream_passthrough.js":43}],53:[function(require,module,exports){
 (function (process){
 var Stream = (function (){
   try {
@@ -9084,13 +9219,13 @@ if (!process.browser && process.env.READABLE_STREAM === 'disable' && Stream) {
 }
 
 }).call(this,require('_process'))
-},{"./lib/_stream_duplex.js":32,"./lib/_stream_passthrough.js":33,"./lib/_stream_readable.js":34,"./lib/_stream_transform.js":35,"./lib/_stream_writable.js":36,"_process":26}],44:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":42,"./lib/_stream_passthrough.js":43,"./lib/_stream_readable.js":44,"./lib/_stream_transform.js":45,"./lib/_stream_writable.js":46,"_process":36}],54:[function(require,module,exports){
 module.exports = require("./lib/_stream_transform.js")
 
-},{"./lib/_stream_transform.js":35}],45:[function(require,module,exports){
+},{"./lib/_stream_transform.js":45}],55:[function(require,module,exports){
 module.exports = require("./lib/_stream_writable.js")
 
-},{"./lib/_stream_writable.js":36}],46:[function(require,module,exports){
+},{"./lib/_stream_writable.js":46}],56:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -9219,7 +9354,7 @@ Stream.prototype.pipe = function(dest, options) {
   return dest;
 };
 
-},{"events":21,"inherits":23,"readable-stream/duplex.js":31,"readable-stream/passthrough.js":42,"readable-stream/readable.js":43,"readable-stream/transform.js":44,"readable-stream/writable.js":45}],47:[function(require,module,exports){
+},{"events":31,"inherits":33,"readable-stream/duplex.js":41,"readable-stream/passthrough.js":52,"readable-stream/readable.js":53,"readable-stream/transform.js":54,"readable-stream/writable.js":55}],57:[function(require,module,exports){
 (function (global){
 var ClientRequest = require('./lib/request')
 var extend = require('xtend')
@@ -9301,7 +9436,7 @@ http.METHODS = [
 	'UNSUBSCRIBE'
 ]
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./lib/request":49,"builtin-status-codes":51,"url":55,"xtend":59}],48:[function(require,module,exports){
+},{"./lib/request":59,"builtin-status-codes":61,"url":65,"xtend":69}],58:[function(require,module,exports){
 (function (global){
 exports.fetch = isFunction(global.fetch) && isFunction(global.ReadableByteStream)
 
@@ -9345,7 +9480,7 @@ function isFunction (value) {
 xhr = null // Help gc
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],49:[function(require,module,exports){
+},{}],59:[function(require,module,exports){
 (function (process,global,Buffer){
 var capability = require('./capability')
 var inherits = require('inherits')
@@ -9626,7 +9761,7 @@ var unsafeHeaders = [
 ]
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {},require("buffer").Buffer)
-},{"./capability":48,"./response":50,"_process":26,"buffer":17,"inherits":23,"readable-stream":43,"to-arraybuffer":52}],50:[function(require,module,exports){
+},{"./capability":58,"./response":60,"_process":36,"buffer":27,"inherits":33,"readable-stream":53,"to-arraybuffer":62}],60:[function(require,module,exports){
 (function (process,global,Buffer){
 var capability = require('./capability')
 var inherits = require('inherits')
@@ -9810,7 +9945,7 @@ IncomingMessage.prototype._onXHRProgress = function () {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {},require("buffer").Buffer)
-},{"./capability":48,"_process":26,"buffer":17,"inherits":23,"readable-stream":43}],51:[function(require,module,exports){
+},{"./capability":58,"_process":36,"buffer":27,"inherits":33,"readable-stream":53}],61:[function(require,module,exports){
 module.exports = {
   "100": "Continue",
   "101": "Switching Protocols",
@@ -9875,7 +10010,7 @@ module.exports = {
   "511": "Network Authentication Required"
 }
 
-},{}],52:[function(require,module,exports){
+},{}],62:[function(require,module,exports){
 var Buffer = require('buffer').Buffer
 
 module.exports = function (buf) {
@@ -9904,7 +10039,7 @@ module.exports = function (buf) {
 	}
 }
 
-},{"buffer":17}],53:[function(require,module,exports){
+},{"buffer":27}],63:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -10127,7 +10262,7 @@ function base64DetectIncompleteChar(buffer) {
   this.charLength = this.charReceived ? 3 : 0;
 }
 
-},{"buffer":17}],54:[function(require,module,exports){
+},{"buffer":27}],64:[function(require,module,exports){
 var nextTick = require('process/browser.js').nextTick;
 var apply = Function.prototype.apply;
 var slice = Array.prototype.slice;
@@ -10204,7 +10339,7 @@ exports.setImmediate = typeof setImmediate === "function" ? setImmediate : funct
 exports.clearImmediate = typeof clearImmediate === "function" ? clearImmediate : function(id) {
   delete immediateIds[id];
 };
-},{"process/browser.js":26}],55:[function(require,module,exports){
+},{"process/browser.js":36}],65:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -10938,7 +11073,7 @@ Url.prototype.parseHost = function() {
   if (host) this.hostname = host;
 };
 
-},{"./util":56,"punycode":27,"querystring":30}],56:[function(require,module,exports){
+},{"./util":66,"punycode":37,"querystring":40}],66:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -10956,14 +11091,14 @@ module.exports = {
   }
 };
 
-},{}],57:[function(require,module,exports){
+},{}],67:[function(require,module,exports){
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object'
     && typeof arg.copy === 'function'
     && typeof arg.fill === 'function'
     && typeof arg.readUInt8 === 'function';
 }
-},{}],58:[function(require,module,exports){
+},{}],68:[function(require,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -11553,7 +11688,7 @@ function hasOwnProperty(obj, prop) {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":57,"_process":26,"inherits":23}],59:[function(require,module,exports){
+},{"./support/isBuffer":67,"_process":36,"inherits":33}],69:[function(require,module,exports){
 module.exports = extend
 
 var hasOwnProperty = Object.prototype.hasOwnProperty;
@@ -11574,10 +11709,10 @@ function extend() {
     return target
 }
 
-},{}],60:[function(require,module,exports){
+},{}],70:[function(require,module,exports){
 module.exports = require('./lib/chai');
 
-},{"./lib/chai":61}],61:[function(require,module,exports){
+},{"./lib/chai":71}],71:[function(require,module,exports){
 /*!
  * chai
  * Copyright(c) 2011-2014 Jake Luer <jake@alogicalparadox.com>
@@ -11672,7 +11807,7 @@ exports.use(should);
 var assert = require('./chai/interface/assert');
 exports.use(assert);
 
-},{"./chai/assertion":62,"./chai/config":63,"./chai/core/assertions":64,"./chai/interface/assert":65,"./chai/interface/expect":66,"./chai/interface/should":67,"./chai/utils":81,"assertion-error":89}],62:[function(require,module,exports){
+},{"./chai/assertion":72,"./chai/config":73,"./chai/core/assertions":74,"./chai/interface/assert":75,"./chai/interface/expect":76,"./chai/interface/should":77,"./chai/utils":91,"assertion-error":99}],72:[function(require,module,exports){
 /*!
  * chai
  * http://chaijs.com
@@ -11805,7 +11940,7 @@ module.exports = function (_chai, util) {
   });
 };
 
-},{"./config":63}],63:[function(require,module,exports){
+},{"./config":73}],73:[function(require,module,exports){
 module.exports = {
 
   /**
@@ -11862,7 +11997,7 @@ module.exports = {
 
 };
 
-},{}],64:[function(require,module,exports){
+},{}],74:[function(require,module,exports){
 /*!
  * chai
  * http://chaijs.com
@@ -13724,7 +13859,7 @@ module.exports = function (chai, _) {
   });
 };
 
-},{}],65:[function(require,module,exports){
+},{}],75:[function(require,module,exports){
 /*!
  * chai
  * Copyright(c) 2011-2014 Jake Luer <jake@alogicalparadox.com>
@@ -15371,7 +15506,7 @@ module.exports = function (chai, util) {
   ('isNotFrozen', 'notFrozen');
 };
 
-},{}],66:[function(require,module,exports){
+},{}],76:[function(require,module,exports){
 /*!
  * chai
  * Copyright(c) 2011-2014 Jake Luer <jake@alogicalparadox.com>
@@ -15407,7 +15542,7 @@ module.exports = function (chai, util) {
   };
 };
 
-},{}],67:[function(require,module,exports){
+},{}],77:[function(require,module,exports){
 /*!
  * chai
  * Copyright(c) 2011-2014 Jake Luer <jake@alogicalparadox.com>
@@ -15610,7 +15745,7 @@ module.exports = function (chai, util) {
   chai.Should = loadShould;
 };
 
-},{}],68:[function(require,module,exports){
+},{}],78:[function(require,module,exports){
 /*!
  * Chai - addChainingMethod utility
  * Copyright(c) 2012-2014 Jake Luer <jake@alogicalparadox.com>
@@ -15724,7 +15859,7 @@ module.exports = function (ctx, name, method, chainingBehavior) {
   });
 };
 
-},{"../config":63,"./flag":72,"./transferFlags":88}],69:[function(require,module,exports){
+},{"../config":73,"./flag":82,"./transferFlags":98}],79:[function(require,module,exports){
 /*!
  * Chai - addMethod utility
  * Copyright(c) 2012-2014 Jake Luer <jake@alogicalparadox.com>
@@ -15770,7 +15905,7 @@ module.exports = function (ctx, name, method) {
   };
 };
 
-},{"../config":63,"./flag":72}],70:[function(require,module,exports){
+},{"../config":73,"./flag":82}],80:[function(require,module,exports){
 /*!
  * Chai - addProperty utility
  * Copyright(c) 2012-2014 Jake Luer <jake@alogicalparadox.com>
@@ -15820,7 +15955,7 @@ module.exports = function (ctx, name, getter) {
   });
 };
 
-},{"../config":63,"./flag":72}],71:[function(require,module,exports){
+},{"../config":73,"./flag":82}],81:[function(require,module,exports){
 /*!
  * Chai - expectTypes utility
  * Copyright(c) 2012-2014 Jake Luer <jake@alogicalparadox.com>
@@ -15864,7 +15999,7 @@ module.exports = function (obj, types) {
   }
 };
 
-},{"./flag":72,"assertion-error":89,"type-detect":94}],72:[function(require,module,exports){
+},{"./flag":82,"assertion-error":99,"type-detect":104}],82:[function(require,module,exports){
 /*!
  * Chai - flag utility
  * Copyright(c) 2012-2014 Jake Luer <jake@alogicalparadox.com>
@@ -15899,7 +16034,7 @@ module.exports = function (obj, key, value) {
   }
 };
 
-},{}],73:[function(require,module,exports){
+},{}],83:[function(require,module,exports){
 /*!
  * Chai - getActual utility
  * Copyright(c) 2012-2014 Jake Luer <jake@alogicalparadox.com>
@@ -15921,7 +16056,7 @@ module.exports = function (obj, args) {
   return args.length > 4 ? args[4] : obj._obj;
 };
 
-},{}],74:[function(require,module,exports){
+},{}],84:[function(require,module,exports){
 /*!
  * Chai - getEnumerableProperties utility
  * Copyright(c) 2012-2014 Jake Luer <jake@alogicalparadox.com>
@@ -15949,7 +16084,7 @@ module.exports = function getEnumerableProperties(object) {
   return result;
 };
 
-},{}],75:[function(require,module,exports){
+},{}],85:[function(require,module,exports){
 /*!
  * Chai - message composition utility
  * Copyright(c) 2012-2014 Jake Luer <jake@alogicalparadox.com>
@@ -16002,7 +16137,7 @@ module.exports = function (obj, args) {
   return flagMsg ? flagMsg + ': ' + msg : msg;
 };
 
-},{"./flag":72,"./getActual":73,"./inspect":82,"./objDisplay":83}],76:[function(require,module,exports){
+},{"./flag":82,"./getActual":83,"./inspect":92,"./objDisplay":93}],86:[function(require,module,exports){
 /*!
  * Chai - getName utility
  * Copyright(c) 2012-2014 Jake Luer <jake@alogicalparadox.com>
@@ -16026,7 +16161,7 @@ module.exports = function (func) {
   return match && match[1] ? match[1] : "";
 };
 
-},{}],77:[function(require,module,exports){
+},{}],87:[function(require,module,exports){
 /*!
  * Chai - getPathInfo utility
  * Copyright(c) 2012-2014 Jake Luer <jake@alogicalparadox.com>
@@ -16139,7 +16274,7 @@ function _getPathValue (parsed, obj, index) {
   return res;
 }
 
-},{"./hasProperty":80}],78:[function(require,module,exports){
+},{"./hasProperty":90}],88:[function(require,module,exports){
 /*!
  * Chai - getPathValue utility
  * Copyright(c) 2012-2014 Jake Luer <jake@alogicalparadox.com>
@@ -16184,7 +16319,7 @@ module.exports = function(path, obj) {
   return info.value;
 };
 
-},{"./getPathInfo":77}],79:[function(require,module,exports){
+},{"./getPathInfo":87}],89:[function(require,module,exports){
 /*!
  * Chai - getProperties utility
  * Copyright(c) 2012-2014 Jake Luer <jake@alogicalparadox.com>
@@ -16222,7 +16357,7 @@ module.exports = function getProperties(object) {
   return result;
 };
 
-},{}],80:[function(require,module,exports){
+},{}],90:[function(require,module,exports){
 /*!
  * Chai - hasProperty utility
  * Copyright(c) 2012-2014 Jake Luer <jake@alogicalparadox.com>
@@ -16288,7 +16423,7 @@ module.exports = function hasProperty(name, obj) {
   return name in obj;
 };
 
-},{"type-detect":94}],81:[function(require,module,exports){
+},{"type-detect":104}],91:[function(require,module,exports){
 /*!
  * chai
  * Copyright(c) 2011 Jake Luer <jake@alogicalparadox.com>
@@ -16420,7 +16555,7 @@ exports.addChainableMethod = require('./addChainableMethod');
 
 exports.overwriteChainableMethod = require('./overwriteChainableMethod');
 
-},{"./addChainableMethod":68,"./addMethod":69,"./addProperty":70,"./expectTypes":71,"./flag":72,"./getActual":73,"./getMessage":75,"./getName":76,"./getPathInfo":77,"./getPathValue":78,"./hasProperty":80,"./inspect":82,"./objDisplay":83,"./overwriteChainableMethod":84,"./overwriteMethod":85,"./overwriteProperty":86,"./test":87,"./transferFlags":88,"deep-eql":90,"type-detect":94}],82:[function(require,module,exports){
+},{"./addChainableMethod":78,"./addMethod":79,"./addProperty":80,"./expectTypes":81,"./flag":82,"./getActual":83,"./getMessage":85,"./getName":86,"./getPathInfo":87,"./getPathValue":88,"./hasProperty":90,"./inspect":92,"./objDisplay":93,"./overwriteChainableMethod":94,"./overwriteMethod":95,"./overwriteProperty":96,"./test":97,"./transferFlags":98,"deep-eql":100,"type-detect":104}],92:[function(require,module,exports){
 // This is (almost) directly from Node.js utils
 // https://github.com/joyent/node/blob/f8c335d0caf47f16d31413f89aa28eda3878e3aa/lib/util.js
 
@@ -16757,7 +16892,7 @@ function objectToString(o) {
   return Object.prototype.toString.call(o);
 }
 
-},{"./getEnumerableProperties":74,"./getName":76,"./getProperties":79}],83:[function(require,module,exports){
+},{"./getEnumerableProperties":84,"./getName":86,"./getProperties":89}],93:[function(require,module,exports){
 /*!
  * Chai - flag utility
  * Copyright(c) 2012-2014 Jake Luer <jake@alogicalparadox.com>
@@ -16809,7 +16944,7 @@ module.exports = function (obj) {
   }
 };
 
-},{"../config":63,"./inspect":82}],84:[function(require,module,exports){
+},{"../config":73,"./inspect":92}],94:[function(require,module,exports){
 /*!
  * Chai - overwriteChainableMethod utility
  * Copyright(c) 2012-2014 Jake Luer <jake@alogicalparadox.com>
@@ -16865,7 +17000,7 @@ module.exports = function (ctx, name, method, chainingBehavior) {
   };
 };
 
-},{}],85:[function(require,module,exports){
+},{}],95:[function(require,module,exports){
 /*!
  * Chai - overwriteMethod utility
  * Copyright(c) 2012-2014 Jake Luer <jake@alogicalparadox.com>
@@ -16919,7 +17054,7 @@ module.exports = function (ctx, name, method) {
   }
 };
 
-},{}],86:[function(require,module,exports){
+},{}],96:[function(require,module,exports){
 /*!
  * Chai - overwriteProperty utility
  * Copyright(c) 2012-2014 Jake Luer <jake@alogicalparadox.com>
@@ -16976,7 +17111,7 @@ module.exports = function (ctx, name, getter) {
   });
 };
 
-},{}],87:[function(require,module,exports){
+},{}],97:[function(require,module,exports){
 /*!
  * Chai - test utility
  * Copyright(c) 2012-2014 Jake Luer <jake@alogicalparadox.com>
@@ -17006,7 +17141,7 @@ module.exports = function (obj, args) {
   return negate ? !expr : expr;
 };
 
-},{"./flag":72}],88:[function(require,module,exports){
+},{"./flag":82}],98:[function(require,module,exports){
 /*!
  * Chai - transferFlags utility
  * Copyright(c) 2012-2014 Jake Luer <jake@alogicalparadox.com>
@@ -17053,7 +17188,7 @@ module.exports = function (assertion, object, includeAll) {
   }
 };
 
-},{}],89:[function(require,module,exports){
+},{}],99:[function(require,module,exports){
 /*!
  * assertion-error
  * Copyright(c) 2013 Jake Luer <jake@qualiancy.com>
@@ -17171,10 +17306,10 @@ AssertionError.prototype.toJSON = function (stack) {
   return props;
 };
 
-},{}],90:[function(require,module,exports){
+},{}],100:[function(require,module,exports){
 module.exports = require('./lib/eql');
 
-},{"./lib/eql":91}],91:[function(require,module,exports){
+},{"./lib/eql":101}],101:[function(require,module,exports){
 /*!
  * deep-eql
  * Copyright(c) 2013 Jake Luer <jake@alogicalparadox.com>
@@ -17433,10 +17568,10 @@ function objectEqual(a, b, m) {
   return true;
 }
 
-},{"buffer":17,"type-detect":92}],92:[function(require,module,exports){
+},{"buffer":27,"type-detect":102}],102:[function(require,module,exports){
 module.exports = require('./lib/type');
 
-},{"./lib/type":93}],93:[function(require,module,exports){
+},{"./lib/type":103}],103:[function(require,module,exports){
 /*!
  * type-detect
  * Copyright(c) 2013 jake luer <jake@alogicalparadox.com>
@@ -17580,9 +17715,9 @@ Library.prototype.test = function (obj, type) {
   }
 };
 
-},{}],94:[function(require,module,exports){
-arguments[4][92][0].apply(exports,arguments)
-},{"./lib/type":95,"dup":92}],95:[function(require,module,exports){
+},{}],104:[function(require,module,exports){
+arguments[4][102][0].apply(exports,arguments)
+},{"./lib/type":105,"dup":102}],105:[function(require,module,exports){
 /*!
  * type-detect
  * Copyright(c) 2013 jake luer <jake@alogicalparadox.com>
@@ -17718,7 +17853,7 @@ Library.prototype.test = function(obj, type) {
   }
 };
 
-},{}],96:[function(require,module,exports){
+},{}],106:[function(require,module,exports){
 
 /**
  * This is the web browser implementation of `debug()`.
@@ -17888,7 +18023,7 @@ function localstorage(){
   } catch (e) {}
 }
 
-},{"./debug":97}],97:[function(require,module,exports){
+},{"./debug":107}],107:[function(require,module,exports){
 
 /**
  * This is the common logic for both the Node.js and web browser
@@ -18087,7 +18222,7 @@ function coerce(val) {
   return val;
 }
 
-},{"ms":98}],98:[function(require,module,exports){
+},{"ms":108}],108:[function(require,module,exports){
 /**
  * Helpers.
  */
@@ -18214,7 +18349,7 @@ function plural(ms, n, name) {
   return Math.ceil(ms / n) + ' ' + name + 's';
 }
 
-},{}],99:[function(require,module,exports){
+},{}],109:[function(require,module,exports){
 var pSlice = Array.prototype.slice;
 var objectKeys = require('./lib/keys.js');
 var isArguments = require('./lib/is_arguments.js');
@@ -18310,7 +18445,7 @@ function objEquiv(a, b, opts) {
   return typeof a === typeof b;
 }
 
-},{"./lib/is_arguments.js":100,"./lib/keys.js":101}],100:[function(require,module,exports){
+},{"./lib/is_arguments.js":110,"./lib/keys.js":111}],110:[function(require,module,exports){
 var supportsArgumentsClass = (function(){
   return Object.prototype.toString.call(arguments)
 })() == '[object Arguments]';
@@ -18332,7 +18467,7 @@ function unsupported(object){
     false;
 };
 
-},{}],101:[function(require,module,exports){
+},{}],111:[function(require,module,exports){
 exports = module.exports = typeof Object.keys === 'function'
   ? Object.keys : shim;
 
@@ -18343,7 +18478,7 @@ function shim (obj) {
   return keys;
 }
 
-},{}],102:[function(require,module,exports){
+},{}],112:[function(require,module,exports){
 exports = module.exports = stringify
 exports.getSerialize = serializer
 
@@ -18372,7 +18507,7 @@ function serializer(replacer, cycleReplacer) {
   }
 }
 
-},{}],103:[function(require,module,exports){
+},{}],113:[function(require,module,exports){
 (function (global){
 /**
  * @license
@@ -34780,7 +34915,7 @@ function serializer(replacer, cycleReplacer) {
 }.call(this));
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],104:[function(require,module,exports){
+},{}],114:[function(require,module,exports){
 (function (process){
 var path = require('path');
 var fs = require('fs');
@@ -34882,7 +35017,7 @@ mkdirP.sync = function sync (p, opts, made) {
 };
 
 }).call(this,require('_process'))
-},{"_process":26,"fs":14,"path":25}],105:[function(require,module,exports){
+},{"_process":36,"fs":24,"path":35}],115:[function(require,module,exports){
 function propagate(events, source, dest) {
   if (arguments.length < 3) {
     dest = source;
@@ -34958,7 +35093,7 @@ function explicitPropagate(events, source, dest) {
   }
 }
 
-},{}],106:[function(require,module,exports){
+},{}],116:[function(require,module,exports){
 'use strict';
 
 var Stringify = require('./stringify');
@@ -34969,7 +35104,7 @@ module.exports = {
     parse: Parse
 };
 
-},{"./parse":107,"./stringify":108}],107:[function(require,module,exports){
+},{"./parse":117,"./stringify":118}],117:[function(require,module,exports){
 'use strict';
 
 var Utils = require('./utils');
@@ -35138,7 +35273,7 @@ module.exports = function (str, opts) {
     return Utils.compact(obj);
 };
 
-},{"./utils":109}],108:[function(require,module,exports){
+},{"./utils":119}],118:[function(require,module,exports){
 'use strict';
 
 var Utils = require('./utils');
@@ -35277,7 +35412,7 @@ module.exports = function (object, opts) {
     return keys.join(delimiter);
 };
 
-},{"./utils":109}],109:[function(require,module,exports){
+},{"./utils":119}],119:[function(require,module,exports){
 'use strict';
 
 var hexTable = (function () {
@@ -35443,7 +35578,7 @@ exports.isBuffer = function (obj) {
     return !!(obj.constructor && obj.constructor.isBuffer && obj.constructor.isBuffer(obj));
 };
 
-},{}],110:[function(require,module,exports){
+},{}],120:[function(require,module,exports){
 var assert = require('assert');
 var http = require('http');
 var nmock = require('../../');
@@ -35463,4 +35598,4 @@ http.get('http://browserifyland.com/beep', function(res) {
       document.getElementById('content').innerHTML = body;
     });
 });
-},{"../../":1,"assert":15,"http":47}]},{},[110]);
+},{"../../":1,"assert":25,"http":57}]},{},[120]);

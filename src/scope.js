@@ -2,8 +2,10 @@
 /**
  * @module nmock/scope
  */
+
+let { headersFieldNamesToLowerCase } = require('./common/headers');
+
 var globalIntercept = require('./intercept')
-  , common          = require('./common')
   , assert          = require('assert')
   , url             = require('url')
   , _               = require('lodash')
@@ -195,7 +197,7 @@ Scope.prototype.matchHeader = function matchHeader(name, value) {
 };
 
 Scope.prototype.defaultReplyHeaders = function defaultReplyHeaders(headers) {
-  this._defaultReplyHeaders = common.headersFieldNamesToLowerCase(headers);
+  this._defaultReplyHeaders = headersFieldNamesToLowerCase(headers);
   return this;
 };
 

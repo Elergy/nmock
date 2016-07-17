@@ -1,18 +1,25 @@
 'use strict';
 
+let mergeChunks = require('./common/merge-chunks');
+let stringifyRequest = require('./common/stringify-request');
+let {isContentEncoded, isJSONContent} = require('./common/type-content');
+let {headersFieldNamesToLowerCase} = require('./common/headers');
+let isStream = require('./common/is-stream');
+
 let {EventEmitter} = require('events');
 let http = require('http');
 let propagate = require('propagate');
 let DelayedBody = require('./delayed_body');
 let IncomingMessage = http.IncomingMessage;
 let ClientRequest = http.ClientRequest;
-let common = require('./common');
+
 let Socket = require('./socket');
 let _ = require('lodash');
 let debug = require('debug')('nmock.request_overrider');
 let timers = require('timers');
 let ReadableStream = require('stream').Readable;
 let globalEmitter = require('./global_emitter');
+let isBinaryBuffer = require('./common/is-binary-buffer');
 
 function getHeader(request, name) {
     if (!request._headers) {
@@ -116,7 +123,7 @@ class RequestOverrider {
 
         if (headers) {
             // We use lower-case header field names throught NMock.
-            headers = common.headersFieldNamesToLowerCase(headers);
+            headers = headersFieldNamesToLowerCase(headers);
 
             _.forOwn(headers, (val, key) => {
                 setHeader(this._req, key, val);
@@ -243,7 +250,7 @@ class RequestOverrider {
             }
 
             let err = new Error('NMock: No match for request ' +
-                common.stringifyRequest(this._options, this.getRequestBody())
+                stringifyRequest(this._options, this.getRequestBody())
             );
 
             err.statusCode = err.status = 404;
@@ -292,21 +299,21 @@ class RequestOverrider {
      * @returns {*}
      */
     getRequestBodyBuffer() {
-        return common.mergeChunks(this._requestBodyBuffers);
+        return mergeChunks(this._requestBodyBuffers);
     }
 
     getRequestBody() {
         // When request body is a binary buffer we internally use in its hexadecimal representation.
 
         let requestBodyBuffer = this.getRequestBodyBuffer();
-        const isBinaryRequestBodyBuffer = common.isBinaryBuffer(requestBodyBuffer);
+        const isBinaryRequestBodyBuffer = isBinaryBuffer(requestBodyBuffer);
 
         return isBinaryRequestBodyBuffer ? requestBodyBuffer.toString('hex') : requestBodyBuffer.toString('utf8');
     }
 
     isRequestBodyBufferBinary() {
         let requestBodyBuffer = this.getRequestBodyBuffer();
-        return common.isBinaryBuffer(requestBodyBuffer);
+        return isBinaryBuffer(requestBodyBuffer);
     }
 
     canDoUnmockedRequest(hostInterceptor) {
@@ -389,7 +396,7 @@ class RequestOverrider {
         if (typeof interceptor.body === 'function') {
             let requestBody = this.getRequestBody();
 
-            if (requestBody && common.isJSONContent(this._options.headers)) {
+            if (requestBody && isJSONContent(this._options.headers)) {
                 requestBody = JSON.parse(requestBody);
             }
 
@@ -405,7 +412,7 @@ class RequestOverrider {
         if (typeof interceptor.body === 'function') {
             let requestBody = this.getRequestBody();
 
-            if (requestBody && common.isJSONContent(this._options.headers)) {
+            if (requestBody && isJSONContent(this._options.headers)) {
                 requestBody = JSON.parse(requestBody);
             }
 
@@ -416,7 +423,7 @@ class RequestOverrider {
             return requestBody;
         }
 
-        if (!common.isContentEncoded(this._response.headers) || common.isStream(interceptor.body)) {
+        if (!isContentEncoded(this._response.headers) || isStream(interceptor.body)) {
             let responseBody = interceptor.body;
 
             //  If the request was binary then we assume that the response will be binary as well.
@@ -449,7 +456,7 @@ class RequestOverrider {
          buffer by buffer and not one single merged buffer)
          */
 
-        if (common.isContentEncoded(this._response.headers) && !common.isStream(interceptor.body)) {
+        if (isContentEncoded(this._response.headers) && !isStream(interceptor.body)) {
             if (interceptor.delayInMs) { //TODO: it should break execution of this.end()
                 this.emitError(new Error('Response delay is currently not supported with content-encoded responses.'));
                 return;
@@ -486,7 +493,7 @@ class RequestOverrider {
         interceptor.interceptionCounter++;
         this._removeInterceptor(interceptor);
         interceptor.discard();
-        
+
         if (this._aborted) {
             return;
         }
@@ -564,7 +571,7 @@ class RequestOverrider {
             responseBody = new DelayedBody(interceptor.getTotalDelay(), responseBody);
         }
 
-        if (common.isStream(responseBody)) {
+        if (isStream(responseBody)) {
             debug('response body is a stream');
             responseBody.pause();
             responseBody.on('data', function(d) {
@@ -615,7 +622,7 @@ class RequestOverrider {
         } = this;
 
         debug('emitting response');
-        
+
         if (typeof this._callback === 'function') {
             debug('callback with response');
             this._callback(this._response);
@@ -626,8 +633,8 @@ class RequestOverrider {
         } else {
             this._req.emit('response', response);
         }
-        
-        if (common.isStream(responseBody)) {
+
+        if (isStream(responseBody)) {
             debug('resuming response stream');
             responseBody.resume();
 
@@ -659,14 +666,14 @@ class RequestOverrider {
     emitError(error) {
         process.nextTick(() => this._req.emit('error', error));
     }
-    
+
     get request() {
         return this._req;
     }
-    
+
     static overrideRequest(req, options, interceptors, removeInterceptor, callback) {
         let overrider = new RequestOverrider(req, options, interceptors, removeInterceptor, callback);
-        
+
         return overrider.request;
     }
 }

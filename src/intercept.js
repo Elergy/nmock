@@ -4,8 +4,11 @@
  * @module nmock/intercepts
  */
 
+let normalizeRequestOptions = require('./common/normalize-request-options');
+let matchStringOrRegexp = require('./common/match-string-or-regexp');
+let {overrideRequests} = require('./common/overriden-requests');
+
 var RequestOverrider = require('./request_overrider'),
-    common           = require('./common'),
     url              = require('url'),
     inherits         = require('util').inherits,
     Interceptor      = require('./interceptor'),
@@ -67,7 +70,7 @@ function enableNetConnect(matcher) {
 }
 
 function isEnabledForNetConnect(options) {
-  common.normalizeRequestOptions(options);
+  normalizeRequestOptions(options);
 
   var enabled = allowNetConnect && allowNetConnect.test(options.host);
   debug('Net connect', enabled ? '' : 'not', 'enabled for', options.host);
@@ -130,7 +133,7 @@ function interceptorsFor(options) {
   var basePath,
       matchingInterceptor;
 
-  common.normalizeRequestOptions(options);
+  normalizeRequestOptions(options);
 
   debug('interceptors for %j', options.host);
 
@@ -157,7 +160,7 @@ function interceptorsFor(options) {
       }
     });
 
-    if (!matchingInterceptor && common.matchStringOrRegexp(basePath, interceptor.key)) {
+    if (!matchingInterceptor && matchStringOrRegexp(basePath, interceptor.key)) {
       matchingInterceptor = interceptor.scopes;
       // false to short circuit the .each
       return false;
@@ -179,7 +182,7 @@ function removeInterceptor(options) {
   } else {
     proto = options.proto ? options.proto : 'http';
 
-    common.normalizeRequestOptions(options);
+    normalizeRequestOptions(options);
     baseUrl = proto + '://' + options.host;
     method = options.method && options.method.toUpperCase() || 'GET';
     key = method + ' ' + baseUrl + (options.path || '/');
@@ -321,7 +324,7 @@ function activate() {
 
   // ----- Overriding http.request and https.request:
 
-  common.overrideRequests(function(proto, overriddenRequest, options, callback) {
+  overrideRequests(function(proto, overriddenRequest, options, callback) {
     //  NOTE: overriddenRequest is already bound to its module.
     var req,
         res;

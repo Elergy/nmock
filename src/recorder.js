@@ -1,8 +1,15 @@
 'use strict';
 
+let mergeChunks = require('./common/merge-chunks');
+let {overrideRequests, restoreOverriddenRequests} = require('./common/overriden-requests');
+let {isContentEncoded} = require('./common/type-content');
+let {deleteHeadersField} = require('./common/headers');
+
 var inspect = require('util').inspect;
 var parse = require('url').parse;
-var common = require('./common');
+let normalizeRequestOptions = require('./common/normalize-request-options');
+let isBinaryBuffer = require('./common/is-binary-buffer');
+
 var intercept = require('./intercept');
 var debug = require('debug')('nmock.recorder');
 var _ = require('lodash');
@@ -15,7 +22,7 @@ var outputs = [];
 
 function getScope(options) {
 
-  common.normalizeRequestOptions(options);
+  normalizeRequestOptions(options);
 
   var scope = [];
   if (options._https_) {
@@ -50,7 +57,7 @@ var getBodyFromChunks = function(chunks, headers) {
   //  If we have headers and there is content-encoding it means that
   //  the body shouldn't be merged but instead persisted as an array
   //  of hex strings so that the responses can be mocked one by one.
-  if(common.isContentEncoded(headers)) {
+  if(isContentEncoded(headers)) {
     return _.map(chunks, function(chunk) {
       if(!Buffer.isBuffer(chunk)) {
         if (typeof chunk === 'string') {
@@ -64,14 +71,14 @@ var getBodyFromChunks = function(chunks, headers) {
     });
   }
 
-  var mergedBuffer = common.mergeChunks(chunks);
+  var mergedBuffer = mergeChunks(chunks);
 
   //  The merged buffer can be one of three things:
   //    1.  A binary buffer which then has to be recorded as a hex string.
   //    2.  A string buffer which represents a JSON object.
   //    3.  A string buffer which doesn't represent a JSON object.
 
-  if(common.isBinaryBuffer(mergedBuffer)) {
+  if(isBinaryBuffer(mergedBuffer)) {
     return mergedBuffer.toString('hex');
   } else {
     var maybeStringifiedJson = mergedBuffer.toString('utf8');
@@ -204,12 +211,12 @@ function record(rec_options) {
   //  we restore any requests that may have been overridden by other parts of NMock (e.g. intercept)
   //  NOTE: This is hacky as hell but it keeps the backward compatibility *and* allows correct
   //    behavior in the face of other modules also overriding ClientRequest.
-  common.restoreOverriddenRequests();
+  restoreOverriddenRequests();
   //  We restore ClientRequest as it messes with recording of modules that also override ClientRequest (e.g. xhr2)
   intercept.restoreOverriddenClientRequest();
 
   //  We override the requests so that we can save information on them before executing.
-  common.overrideRequests(function(proto, overriddenRequest, options, callback) {
+  overrideRequests(function(proto, overriddenRequest, options, callback) {
 
     var bodyChunks = [];
 
@@ -248,7 +255,7 @@ function record(rec_options) {
           if(out.reqheaders) {
             //  We never record user-agent headers as they are worse than useless -
             //  they actually make testing more difficult without providing any benefit (see README)
-            common.deleteHeadersField(out.reqheaders, 'user-agent');
+            deleteHeadersField(out.reqheaders, 'user-agent');
 
             //  Remove request headers completely unless it was explicitly enabled by the user (see README)
             if(!enable_reqheaders_recording) {
@@ -345,7 +352,7 @@ function record(rec_options) {
 function restore() {
   debug(currentRecordingId, 'restoring all the overridden http/https properties');
 
-  common.restoreOverriddenRequests();
+  restoreOverriddenRequests();
   intercept.restoreOverriddenClientRequest();
   recordingInProgress = false;
 }

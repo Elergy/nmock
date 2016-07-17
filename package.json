@@ -204,7 +204,8 @@
     "jshint": "jshint src/*.js",
     "changelog": "changelog nmock all -m > CHANGELOG.md",
     "pretest": "npm run build",
-    "precoverage": "npm run build"
+    "precoverage": "npm run build",
+    "prebuild": "rm -rf lib"
   },
   "pre-commit": [
     "jshint",
