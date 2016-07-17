@@ -1,3 +1,3 @@
-var EventEmitter = require('events').EventEmitter
+let {EventEmitter} = require('events');
 
 module.exports = new EventEmitter();

@@ -1,14 +1,21 @@
 'use strict';
-var _ = require("lodash");
+let _ = require('lodash');
 
 function mixin(a, b) {
-	if (! a) { a = {}; }
-	if (! b) {b = {}; }
-	a = _.cloneDeep(a);
-	for(var prop in b) {
-		a[prop] = b[prop];
-	}
-	return a;
+    if (!a) {
+        a = {};
+    }
+    if (!b) {
+        b = {};
+    }
+    a = _.cloneDeep(a);
+    
+    for (let prop in b) {
+        if (b.hasOwnProperty(prop)) {
+            a[prop] = b[prop];
+        }
+    }
+    return a;
 }
 
 module.exports = mixin;

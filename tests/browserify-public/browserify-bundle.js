@@ -821,7 +821,10 @@ module.exports = DelayedBody;
 },{"../node_modules/browserify/node_modules/insert-module-globals/node_modules/is-buffer/index.js":34,"./common/is-stream":6,"_process":36,"events":31,"stream":56}],15:[function(require,module,exports){
 'use strict';
 
-var EventEmitter = require('events').EventEmitter;
+var _require = require('events');
+
+var EventEmitter = _require.EventEmitter;
+
 
 module.exports = new EventEmitter();
 },{"events":31}],16:[function(require,module,exports){
@@ -1828,20 +1831,23 @@ function deepEqualExtended(spec, body) {
 },{"../node_modules/browserify/node_modules/insert-module-globals/node_modules/is-buffer/index.js":34,"deep-equal":109,"querystring":40}],19:[function(require,module,exports){
 'use strict';
 
-var _ = require("lodash");
+var _ = require('lodash');
 
 function mixin(a, b) {
-	if (!a) {
-		a = {};
-	}
-	if (!b) {
-		b = {};
-	}
-	a = _.cloneDeep(a);
-	for (var prop in b) {
-		a[prop] = b[prop];
-	}
-	return a;
+    if (!a) {
+        a = {};
+    }
+    if (!b) {
+        b = {};
+    }
+    a = _.cloneDeep(a);
+
+    for (var prop in b) {
+        if (b.hasOwnProperty(prop)) {
+            a[prop] = b[prop];
+        }
+    }
+    return a;
 }
 
 module.exports = mixin;

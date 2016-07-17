@@ -3,3 +3,4 @@ npm-debug.log
 .idea
 coverage
 lib
+tests_es5

@@ -197,15 +197,15 @@
     "zombie": "^4.2.1"
   },
   "scripts": {
-    "build": "babel src -d lib",
-    "test": "node --harmony tests/test.js",
-    "coverage": "node --harmony node_modules/istanbul/lib/cli.js cover tests/test.js && istanbul check-coverage",
+    "build": "babel src -d lib --copy-files; babel tests -d tests_es5 --copy-files",
+    "test": "node --harmony tests_es5/test.js",
+    "coverage": "node --harmony node_modules/istanbul/lib/cli.js cover tests_es5/test.js && istanbul check-coverage",
     "coveralls": "cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
     "jshint": "jshint src/*.js",
     "changelog": "changelog nmock all -m > CHANGELOG.md",
     "pretest": "npm run build",
     "precoverage": "npm run build",
-    "prebuild": "rm -rf lib"
+    "prebuild": "rm -rf lib; rm -rf tests_es5"
   },
   "pre-commit": [
     "jshint",
