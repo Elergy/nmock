@@ -4,6 +4,7 @@
  */
 
 let { headersFieldNamesToLowerCase } = require('./common/headers');
+let { isNMockEnabled } = require('./common/nmock-status');
 
 var globalIntercept = require('./intercept')
   , assert          = require('assert')
@@ -127,7 +128,7 @@ Scope.prototype.pendingMocks = function pendingMocks() {
 Scope.prototype.isDone = function isDone() {
   var self = this;
   // if NMock is turned off, it always says it's done
-  if (! globalIntercept.isOn()) { return true; }
+  if (! isNMockEnabled()) { return true; }
 
   var keys = Object.keys(this.keyedInterceptors);
   if (keys.length === 0) {
