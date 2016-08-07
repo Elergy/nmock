@@ -9,7 +9,6 @@ let {getInterceptorsFor, removeInterceptor} = require('./../interceptors');
 let RequestOverrider = require('./../../request_overrider');
 let {isEnabledForNetConnect} = require('./../net-connection');
 let NetConnectNotAllowedError = require('./../net-connect-not-allowed-error');
-let getOriginalClientRequest = require('./original-client-request').get;
 let inherits = require('util').inherits;
 
 /**
@@ -40,7 +39,8 @@ class OverriddenClientRequest {
 
             //  Fallback to original ClientRequest if NMock is off or the net connection is enabled.
             if (isNMockDisabled() || isEnabledForNetConnect(options)) {
-                getOriginalClientRequest().apply(this, arguments);
+                let originalClientRequest = require('./original-client-request');
+                originalClientRequest.get().apply(this, arguments);
             } else {
                 timers.setImmediate(() => {
                     let error = new NetConnectNotAllowedError(options.host, options.path);
