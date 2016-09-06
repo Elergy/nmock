@@ -34,7 +34,7 @@ function activate() {
 
         if (isNMockEnabled() && interceptors) {
             let matches = !!_.find(interceptors, (interceptor) => {
-                return interceptor.matchIndependentOfBody(options);
+                return interceptor.match(options);
             });
 
             let allowUnmocked = !!_.find(interceptors, (interceptor) => {

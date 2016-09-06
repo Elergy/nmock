@@ -5,6 +5,7 @@ coverage
 examples
 src
 tests
+tests_es5
 .babelrc
 .coveralls.yml
 .istanbul.yml
