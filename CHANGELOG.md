@@ -1,3 +1,8 @@
+1.0.0 / 2017-01-06
+===================
+
+  * The crucial part of NMock was rewritten with ECMAScript 2015
+
 0.10.1 / 2016-09-06
 ===================
 
