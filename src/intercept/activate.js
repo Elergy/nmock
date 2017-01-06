@@ -50,6 +50,16 @@ function activate() {
                 } else {
                     req = overriddenRequest(options, callback);
                 }
+
+                req.on('response', (stream) => {
+                    let data = '';
+
+                    stream.on('data', (chunk) => data += chunk);
+                    stream.once('end', () => {
+                        globalEmitter.emit('no match response', stream.request, data);
+                    })
+                });
+
                 globalEmitter.emit('no match', req);
                 return req;
             }

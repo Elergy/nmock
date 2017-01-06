@@ -1161,7 +1161,7 @@ nmock.removeInterceptor(interceptor);
 A scope emits the following events:
 
 * `emit('request', function(req, interceptor))`;
-* `emit('replied', function(req, interceptor))`;
+* `emit('replied', function(req, interceptor, originalRequestOptions))`;
 
 ## Global no match event
 
@@ -1170,6 +1170,15 @@ You can also listen for no match events like this:
 ```js
 nmock.emitter.on('no match', function(req) {
   
+});
+```
+
+## Unmatched request's response event
+
+If NMock doesn't have an interceptor for the request and `allowUnmocked` options is enabled, you can listen global `no match response` event like this:
+```js
+nmock.emitter.on('no match response', function(req, responseData) {
+
 });
 ```
 

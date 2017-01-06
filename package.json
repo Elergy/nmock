@@ -7,7 +7,7 @@
     "testing",
     "isolation"
   ],
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "Eugene Ponomarev <ponomarev.e.s@gmail.com>",
   "contributors": [
     {
@@ -183,7 +183,7 @@
     "hyperquest": "^2.0.0",
     "isomorphic-fetch": "^2.2.0",
     "istanbul": "^0.4.2",
-    "jshint": "^2.5.6",
+    "jscs": "^3.0.7",
     "needle": "^1.0.0",
     "node-static": "^0.7.7",
     "pre-commit": "1.2.2",
@@ -201,14 +201,12 @@
     "test": "node --harmony tests_es5/test.js",
     "coverage": "node --harmony node_modules/istanbul/lib/cli.js cover tests_es5/test.js && istanbul check-coverage",
     "coveralls": "cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
-    "jshint": "jshint src/*.js",
     "changelog": "changelog nmock all -m > CHANGELOG.md",
     "pretest": "npm run build",
     "precoverage": "npm run build",
     "prebuild": "rm -rf lib; rm -rf tests_es5"
   },
   "pre-commit": [
-    "jshint",
     "coverage"
   ],
   "license": "MIT"

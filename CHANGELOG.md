@@ -1,3 +1,9 @@
+1.1.0 / 2017-01-06
+===================
+
+  * Added one more parameter to scope's 'replied' event - information about current request
+  * Added new global event - 'no match response'
+
 1.0.0 / 2017-01-06
 ===================
 

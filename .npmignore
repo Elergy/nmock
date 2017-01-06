@@ -12,3 +12,4 @@ tests_es5
 .jscs.json
 .jshintrc
 .travis.yml
+.idea

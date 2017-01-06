@@ -647,6 +647,8 @@ class RequestOverrider {
             responseBuffers.push(responseBody);
         }
 
+        const originalRequestOptions = this._options;
+
         // Stream the response chunks one at a time.
         timers.setImmediate(function emitChunk() {
             let chunk = responseBuffers.shift();
@@ -658,7 +660,7 @@ class RequestOverrider {
             } else {
                 debug('ending response stream');
                 response.push(null);
-                interceptor.scope.emit('replied', req, interceptor);
+                interceptor.scope.emit('replied', req, interceptor, originalRequestOptions);
             }
         });
     }
