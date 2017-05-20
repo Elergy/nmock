@@ -4,6 +4,7 @@
 [![Coverage Status](https://coveralls.io/repos/github/Elergy/nmock/badge.svg?branch=master)](https://coveralls.io/github/Elergy/nmock?branch=master)
 [![Dependency Status](https://david-dm.org/Elergy/nmock/master.svg)](https://david-dm.org/Elergy/nmock/master)
 [![devDependency Status](https://david-dm.org/Elergy/nmock/master/dev-status.svg)](https://david-dm.org/Elergy/nmock#info=devDependencies)
+[![Greenkeeper badge](https://badges.greenkeeper.io/Elergy/nmock.svg)](https://greenkeeper.io/)
 
 NMock is an HTTP mocking and expectations library for Node.js
 
