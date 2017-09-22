@@ -188,7 +188,7 @@
     "node-static": "^0.7.7",
     "pre-commit": "1.2.2",
     "request": "2.75.0",
-    "request-promise": "^4.2.1",
+    "request-promise": "^4.2.2",
     "restify": "^4.3.0",
     "restler": "3.4.0",
     "rimraf": "^2.3.2",
