@@ -173,7 +173,7 @@
     "qs": "^6.0.2"
   },
   "devDependencies": {
-    "async": "^2.0.0",
+    "async": "^2.6.0",
     "aws-sdk": "^2.54.0",
     "babel-cli": "^6.10.1",
     "babel-core": "^6.10.4",
