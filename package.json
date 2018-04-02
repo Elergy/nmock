@@ -194,7 +194,7 @@
     "rimraf": "^2.3.2",
     "superagent": "^3.3.1",
     "tap": "^10.3.2",
-    "zombie": "^4.2.1"
+    "zombie": "^6.1.0"
   },
   "scripts": {
     "build": "babel src -d lib --copy-files; babel tests -d tests_es5 --copy-files",
